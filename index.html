@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#0a0710">
+<meta name="description" content="PIXEL BUSTER SAGA - ブラウザ完結型ハクスラアクションRPG">
+<title>PIXEL BUSTER SAGA</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<noscript>
+  <p class="noscript-note">このゲームを遊ぶには JavaScript を有効にしてください。</p>
+</noscript>
+
+<div id="app">
+  <div id="game-shell">
+
+    <!-- ============================================================
+         ステージ（Canvas 480 x 700 固定比率）
+         ============================================================ -->
+    <div id="stage-area">
+      <canvas id="game-canvas" width="480" height="700" aria-label="ゲームフィールド"></canvas>
+
+      <!-- ------- HUD ------- -->
+      <div id="hud">
+        <div class="hud-block hud-block--left">
+          <div class="hud-portrait" id="hud-portrait">
+            <span class="hud-portrait-glyph" id="hud-portrait-glyph">✦</span>
+          </div>
+          <div class="hud-char">
+            <div class="hud-char-row">
+              <span class="hud-char-name" id="hud-char-name">未選択</span>
+              <span class="hud-char-element" id="hud-char-element">-</span>
+            </div>
+            <div class="hud-char-row">
+              <span class="hud-char-stars" id="hud-char-stars">★</span>
+              <span class="hud-char-luck" id="hud-char-luck">LUCK 0</span>
+            </div>
+            <div class="hud-hp" id="hud-hp">
+              <div class="hud-hp-bar">
+                <div class="hud-hp-fill" id="hud-hp-fill"></div>
+                <span class="hud-hp-text" id="hud-hp-text">0 / 0</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="hud-block hud-block--right">
+          <div class="hud-stat">
+            <span class="hud-stat-label">STAGE</span>
+            <span class="hud-stat-value" id="hud-stage">1-1</span>
+          </div>
+          <div class="hud-stat">
+            <span class="hud-stat-label">WAVE</span>
+            <span class="hud-stat-value" id="hud-wave">1 / 3</span>
+          </div>
+          <div class="hud-stat">
+            <span class="hud-stat-label">GOLD</span>
+            <span class="hud-stat-value" id="hud-gold">0</span>
+          </div>
+          <div class="hud-stat">
+            <span class="hud-stat-label">SHOT</span>
+            <span class="hud-stat-value" id="hud-shots">3</span>
+          </div>
+        </div>
+
+        <div class="hud-combo is-hidden" id="hud-combo">
+          <span class="hud-combo-count" id="hud-combo-count">0</span>
+          <span class="hud-combo-label">COMBO</span>
+          <span class="hud-combo-mult" id="hud-combo-mult">x1.00</span>
+        </div>
+
+        <div class="hud-boss is-hidden" id="hud-boss">
+          <span class="hud-boss-name" id="hud-boss-name">BOSS</span>
+          <div class="hud-boss-bar">
+            <div class="hud-boss-fill" id="hud-boss-fill"></div>
+          </div>
+        </div>
+
+        <div class="hud-burst" id="hud-burst">
+          <span class="hud-burst-icon">◉</span>
+          <span class="hud-burst-text">TAP BURST</span>
+          <span class="hud-burst-state" id="hud-burst-state">READY</span>
+        </div>
+
+        <div class="hud-skills" id="hud-skills"></div>
+      </div>
+
+      <!-- ------- 演出レイヤー ------- -->
+      <div id="banner-layer" aria-live="polite"></div>
+      <div id="flash-layer"></div>
+      <div id="toast-layer" aria-live="polite"></div>
+    </div>
+
+    <!-- ============================================================
+         操作バー
+         ============================================================ -->
+    <div id="control-bar">
+      <button type="button" class="ctl-btn" id="btn-pause" title="ポーズ（Esc）">
+        <span class="ctl-btn-icon">❚❚</span><span class="ctl-btn-label">PAUSE</span>
+      </button>
+      <button type="button" class="ctl-btn" id="btn-inventory" title="装備・所持品（I）">
+        <span class="ctl-btn-icon">▣</span><span class="ctl-btn-label">BAG</span>
+      </button>
+      <button type="button" class="ctl-btn" id="btn-sound" title="サウンド ON / OFF（M）">
+        <span class="ctl-btn-icon" id="btn-sound-icon">♪</span><span class="ctl-btn-label" id="btn-sound-label">ON</span>
+      </button>
+      <button type="button" class="ctl-btn" id="btn-help" title="遊び方（H）">
+        <span class="ctl-btn-icon">?</span><span class="ctl-btn-label">HELP</span>
+      </button>
+      <button type="button" class="ctl-btn ctl-btn--danger" id="btn-retire" title="リタイア">
+        <span class="ctl-btn-icon">⚑</span><span class="ctl-btn-label">RETIRE</span>
+      </button>
+    </div>
+
+  </div>
+  <!-- ============================================================
+       モーダル群
+       ============================================================ -->
+  <div id="modal-root">
+
+    <!-- ------- タイトル ------- -->
+    <section class="modal is-open" id="modal-title" data-modal="title">
+      <div class="modal-card modal-card--title">
+        <p class="title-kicker">BROWSER HACK &amp; SLASH</p>
+        <h1 class="title-logo">
+          <span class="title-logo-line">PIXEL</span>
+          <span class="title-logo-line title-logo-line--accent">BUSTER</span>
+          <span class="title-logo-line">SAGA</span>
+        </h1>
+        <p class="title-sub">引き絞れ、跳ね返せ、コアを撃ち抜け。</p>
+
+        <ul class="save-info" id="title-save-info">
+          <li class="save-info-row">
+            <span class="save-info-label">GOLD</span>
+            <span class="save-info-value" id="save-gold">0</span>
+          </li>
+          <li class="save-info-row">
+            <span class="save-info-label">最高 STAGE</span>
+            <span class="save-info-value" id="save-best">1-1</span>
+          </li>
+          <li class="save-info-row">
+            <span class="save-info-label">所持 CHARACTER</span>
+            <span class="save-info-value" id="save-chars">0 / 4</span>
+          </li>
+          <li class="save-info-row">
+            <span class="save-info-label">所持 EQUIP</span>
+            <span class="save-info-value" id="save-items">0</span>
+          </li>
+        </ul>
+
+        <div class="modal-actions modal-actions--stack">
+          <button type="button" class="btn btn--primary" id="btn-continue">つづきから</button>
+          <button type="button" class="btn" id="btn-new-game">新しい冒険（キャラ選択）</button>
+          <button type="button" class="btn btn--ghost" id="btn-title-inventory">装備・所持品</button>
+          <button type="button" class="btn btn--ghost" id="btn-title-help">遊び方</button>
+          <button type="button" class="btn btn--danger btn--small" id="btn-wipe-save">セーブデータを消去</button>
+        </div>
+
+        <p class="modal-footnote" id="title-version">ver 1.0.0 / AudioContext Synth Engine</p>
+      </div>
+    </section>
+
+    <!-- ------- キャラクター選択 ------- -->
+    <section class="modal" id="modal-charselect" data-modal="charselect">
+      <div class="modal-card modal-card--wide">
+        <header class="modal-head">
+          <h2 class="modal-title">CHARACTER SELECT</h2>
+          <p class="modal-desc">重複入手や進化で <b>LUCK</b> が加算され、クリア時の追加ドロップ率が上昇します。</p>
+        </header>
+
+        <div class="char-select-body">
+          <div class="char-list" id="char-list"></div>
+
+          <div class="char-detail is-hidden" id="char-detail">
+            <div class="char-detail-head">
+              <span class="char-detail-glyph" id="char-detail-glyph">✦</span>
+              <div class="char-detail-title">
+                <span class="char-detail-name" id="char-detail-name">-</span>
+                <span class="char-detail-meta">
+                  <span class="char-detail-stars" id="char-detail-stars">★</span>
+                  <span class="char-detail-element" id="char-detail-element">-</span>
+                  <span class="char-detail-luck" id="char-detail-luck">LUCK 0</span>
+                </span>
+              </div>
+            </div>
+            <p class="char-detail-desc" id="char-detail-desc">-</p>
+            <ul class="stat-list" id="char-detail-stats"></ul>
+            <p class="char-detail-friend" id="char-detail-friend">友情コンボ: -</p>
+            <div class="char-detail-evolve">
+              <button type="button" class="btn btn--accent btn--small" id="btn-evolve">進化させる</button>
+              <span class="evolve-cost" id="evolve-cost">必要素材: -</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn--ghost" id="btn-char-back">タイトルへ</button>
+          <button type="button" class="btn btn--primary" id="btn-char-confirm" disabled>このキャラで出撃</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ------- スキル 3択 ------- -->
+    <section class="modal" id="modal-skill" data-modal="skill">
+      <div class="modal-card modal-card--wide">
+        <header class="modal-head">
+          <h2 class="modal-title">LEVEL UP</h2>
+          <p class="modal-desc" id="skill-subtitle">スキルを1つ選んでください。</p>
+        </header>
+        <div class="skill-list" id="skill-list"></div>
+        <p class="skill-synergy-note" id="skill-synergy-note">同じタグを重ねるとシナジーが発動します。</p>
+        <div class="modal-actions">
+          <span class="gold-inline">GOLD <b id="skill-gold">0</b></span>
+          <button type="button" class="btn btn--ghost btn--small" id="btn-skill-skip">見送る（GOLD +<span id="skill-skip-bonus">20</span>）</button>
+          <button type="button" class="btn btn--small" id="btn-skill-reroll">引き直す（<span id="skill-reroll-cost">30</span>G）</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ------- 装備・所持品 ------- -->
+    <section class="modal" id="modal-inventory" data-modal="inventory">
+      <div class="modal-card modal-card--wide">
+        <header class="modal-head">
+          <h2 class="modal-title">INVENTORY</h2>
+          <p class="modal-desc" id="inv-summary">GOLD <b id="inv-gold">0</b> / LUCK <b id="inv-luck">0</b> / 最高 STAGE <b id="inv-best">1-1</b></p>
+        </header>
+
+        <nav class="tab-bar">
+          <button type="button" class="tab-btn is-active" id="inv-tab-equip" data-tab="equip">装備</button>
+          <button type="button" class="tab-btn" id="inv-tab-items" data-tab="items">所持品</button>
+          <button type="button" class="tab-btn" id="inv-tab-chars" data-tab="chars">キャラ</button>
+        </nav>
+
+        <div class="tab-panels">
+          <div class="tab-panel is-active" id="inv-panel-equip" data-panel="equip">
+            <div class="equip-slots">
+              <div class="equip-slot" id="equip-slot-weapon" data-slot="weapon">
+                <span class="equip-slot-label">武器 SLOT</span>
+                <span class="equip-slot-name" data-field="name">空き</span>
+                <span class="equip-slot-rarity" data-field="rarity">-</span>
+                <ul class="equip-slot-opts" data-field="opts"></ul>
+                <button type="button" class="btn btn--ghost btn--small" data-action="unequip" data-slot="weapon">外す</button>
+              </div>
+              <div class="equip-slot" id="equip-slot-relic" data-slot="relic">
+                <span class="equip-slot-label">レリック SLOT</span>
+                <span class="equip-slot-name" data-field="name">空き</span>
+                <span class="equip-slot-rarity" data-field="rarity">-</span>
+                <ul class="equip-slot-opts" data-field="opts"></ul>
+                <button type="button" class="btn btn--ghost btn--small" data-action="unequip" data-slot="relic">外す</button>
+              </div>
+            </div>
+            <ul class="stat-list stat-list--total" id="equip-stats"></ul>
+          </div>
+
+          <div class="tab-panel" id="inv-panel-items" data-panel="items">
+            <p class="panel-note">レアリティが高いほど強力ですが、<b>Cursed</b> は被ダメージが2倍になります。</p>
+            <div class="item-list" id="inventory-list"></div>
+            <p class="empty-note is-hidden" id="inv-empty">装備品を持っていません。</p>
+          </div>
+
+          <div class="tab-panel" id="inv-panel-chars" data-panel="chars">
+            <p class="panel-note">重複キャラは自動で LUCK に変換されます。LUCK は追加ドロップ率に直結します。</p>
+            <div class="char-list char-list--compact" id="inv-char-list"></div>
+          </div>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn--primary" id="btn-close-inventory">閉じる</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ------- リザルト ------- -->
+    <section class="modal" id="modal-result" data-modal="result">
+      <div class="modal-card">
+        <header class="modal-head">
+          <h2 class="modal-title" id="result-title">WAVE CLEAR</h2>
+          <p class="modal-desc" id="result-subtitle">-</p>
+        </header>
+        <ul class="stat-list" id="result-stats"></ul>
+        <h3 class="result-subhead">DROPS</h3>
+        <ul class="drop-list" id="result-drops"></ul>
+        <p class="empty-note is-hidden" id="result-drops-empty">今回はドロップなし…</p>
+        <p class="result-luck-note" id="result-luck-note">LUCK 0</p>
+        <div class="modal-actions">
+          <button type="button" class="btn btn--primary" id="btn-result-next">次へ</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ------- ゲームオーバー ------- -->
+    <section class="modal" id="modal-gameover" data-modal="gameover">
+      <div class="modal-card modal-card--danger">
+        <header class="modal-head">
+          <h2 class="modal-title modal-title--danger" id="gameover-title">GAME OVER</h2>
+          <p class="modal-desc" id="gameover-subtitle">-</p>
+        </header>
+        <ul class="stat-list" id="gameover-stats"></ul>
+        <div class="modal-actions">
+          <button type="button" class="btn btn--ghost" id="btn-gameover-title">タイトルへ</button>
+          <button type="button" class="btn btn--primary" id="btn-gameover-retry">もう一度挑戦</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ------- 一時停止 ------- -->
+    <section class="modal" id="modal-pause" data-modal="pause">
+      <div class="modal-card">
+        <header class="modal-head">
+          <h2 class="modal-title">PAUSED</h2>
+          <p class="modal-desc">ゲームを中断しています。</p>
+        </header>
+        <ul class="stat-list" id="pause-stats"></ul>
+        <div class="modal-actions modal-actions--stack">
+          <button type="button" class="btn btn--primary" id="btn-resume">再開する</button>
+          <button type="button" class="btn" id="btn-pause-inventory">装備・所持品</button>
+          <button type="button" class="btn" id="btn-pause-sound">サウンド: <span id="btn-pause-sound-label">ON</span></button>
+          <button type="button" class="btn btn--danger" id="btn-pause-retire">リタイアする</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ------- 進化演出 ------- -->
+    <section class="modal" id="modal-evolution" data-modal="evolution">
+      <div class="modal-card modal-card--evolution">
+        <p class="evolution-kicker">EVOLUTION</p>
+        <div class="evolution-stage">
+          <div class="evolution-side evolution-side--from">
+            <span class="evolution-glyph" id="evolution-from-glyph">✦</span>
+            <span class="evolution-name" id="evolution-from-name">-</span>
+            <span class="evolution-stars" id="evolution-from-stars">★</span>
+          </div>
+          <div class="evolution-arrow">≫</div>
+          <div class="evolution-side evolution-side--to">
+            <span class="evolution-glyph" id="evolution-to-glyph">✦</span>
+            <span class="evolution-name" id="evolution-to-name">-</span>
+            <span class="evolution-stars" id="evolution-to-stars">★</span>
+          </div>
+        </div>
+        <ul class="stat-list" id="evolution-diff"></ul>
+        <div class="modal-actions">
+          <button type="button" class="btn btn--primary" id="btn-evolution-ok">受け取る</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ------- 遊び方 ------- -->
+    <section class="modal" id="modal-help" data-modal="help">
+      <div class="modal-card modal-card--wide modal-card--scroll">
+        <header class="modal-head">
+          <h2 class="modal-title">HOW TO PLAY</h2>
+          <p class="modal-desc">操作・バトル・育成のすべて。</p>
+        </header>
+
+        <h3 class="help-head">1. 操作</h3>
+        <ul class="help-list">
+          <li>自分の球を <b>マウスドラッグ / タッチスワイプ</b> して<strong>逆方向に引っ張る</strong>とガイド矢印が伸びます。</li>
+          <li>指を離した瞬間に、引いた方向と逆へ <b>初速</b> が与えられて射出されます。</li>
+          <li>球が動いている間にフィールドを <b>タップ</b> すると <b>タップバースト</b> が発動します（1ショットにつき1回）。</li>
+          <li>ショットを使い切る前に敵を全滅させればウェーブクリアです。</li>
+        </ul>
+
+        <h3 class="help-head">2. バトルシステム</h3>
+        <ul class="help-list">
+          <li><b>反射</b>: 壁・障害物・敵に当たると弾性反射します。速度はわずかに減衰し、一定速度を下回ると停止して次のショットに移ります。</li>
+          <li><b>弱点コア</b>: 各敵の中心からオフセットされた半径8pxのコア。命中すると <b>ダメージ3倍</b> かつ <b>ヒットストップ</b> が発生します。</li>
+          <li><b>コンボ</b>: 壁や障害物との隙間で高速ヒットを連ねるとコンボ数が増え、ダメージ倍率が <b>1.0 + (combo × 0.05)</b> 倍になります（コンボ上限は60＝最大 x4.0）。</li>
+          <li><b>友情コンボ</b>: 移動中の球が味方待機球に触れると即時発動します。追尾弾・十字貫通レーザー・衝撃波の3系統があります。</li>
+          <li><b>タップバースト</b>: その場で停止し、半径80pxの大爆発衝撃波で全体ダメージ＋敵弾消去。</li>
+        </ul>
+
+        <h3 class="help-head">3. ギミック</h3>
+        <ul class="help-list">
+          <li><b>誘爆バレル</b>: 耐久3。3ヒットで周囲に特大範囲ダメージ。</li>
+          <li><b>加速板（アクセルギア）</b>: 通過時に進行方向へ <b>1.8倍</b> 加速（一定速度以上では加速しません）。コンボ稼ぎの要です。</li>
+          <li><b>ワープホール</b>: IN / OUT のペアで瞬間移動。速度ベクトルは維持されます。</li>
+        </ul>
+
+        <h3 class="help-head">4. シナジー</h3>
+        <ul class="help-list">
+          <li><b>跳弾雷撃</b>（reflect + lightning）: 壁反射のたびに最寄りの敵へ落雷。</li>
+          <li><b>連鎖発火</b>（fire + crit）: クリティカル時に着火させ、撃破時に周囲へ誘爆。</li>
+          <li><b>狂戦士の契約</b>（fire + crit + reflect）: 現在HPを10%消費する代わりに攻撃力+100%、与ダメージの15%を吸収。</li>
+        </ul>
+
+        <h3 class="help-head">5. 育成とハクスラ</h3>
+        <ul class="help-list">
+          <li>キャラは全4種（火 / 風 / 水 / 闇）、それぞれ <b>★3 → ★4 → ★5</b> の3段階進化。進化で友情コンボが大幅強化されます。</li>
+          <li>装備は <b>武器 / レリック</b> の2スロット。Normal / Rare / Epic / Cursed の4レアリティとランダムOPが抽選されます。</li>
+          <li>進行状況は <code>localStorage</code> のキー <code>PIXEL_BUSTER_SAGA_SAVE</code> に自動保存されます。</li>
+        </ul>
+
+        <h3 class="help-head">6. ショートカット</h3>
+        <ul class="help-list">
+          <li><b>Esc</b>: ポーズ / <b>I</b>: 装備 / <b>M</b>: サウンド / <b>H</b>: この画面 / <b>Space</b>: タップバースト</li>
+        </ul>
+
+        <div class="modal-actions">
+          <button type="button" class="btn btn--primary" id="btn-close-help">閉じる</button>
+        </div>
+      </div>
+    </section>
+
+  </div>
+  <!-- ============================================================
+       動的生成用テンプレート
+       ============================================================ -->
+  <div id="template-root" hidden>
+
+    <!-- キャラクターカード -->
+    <template id="tpl-char-card">
+      <button type="button" class="char-card" data-role="char-card">
+        <span class="char-card-glyph" data-field="glyph">✦</span>
+        <span class="char-card-main">
+          <span class="char-card-name" data-field="name">-</span>
+          <span class="char-card-stars" data-field="stars">★</span>
+          <span class="char-card-element" data-field="element">-</span>
+        </span>
+        <span class="char-card-luck" data-field="luck">LUCK 0</span>
+        <span class="char-card-lock" data-field="lock">未所持</span>
+      </button>
+    </template>
+
+    <!-- スキルカード -->
+    <template id="tpl-skill-card">
+      <button type="button" class="skill-card" data-role="skill-card">
+        <span class="skill-card-glyph" data-field="glyph">✦</span>
+        <span class="skill-card-name" data-field="name">-</span>
+        <span class="skill-card-tags" data-field="tags"></span>
+        <span class="skill-card-desc" data-field="desc">-</span>
+        <span class="skill-card-level" data-field="level">NEW</span>
+        <span class="skill-card-synergy" data-field="synergy"></span>
+      </button>
+    </template>
+
+    <!-- 装備アイテムカード -->
+    <template id="tpl-item-card">
+      <div class="item-card" data-role="item-card">
+        <span class="item-card-head">
+          <span class="item-card-slot" data-field="slot">武器</span>
+          <span class="item-card-name" data-field="name">-</span>
+          <span class="item-card-rarity" data-field="rarity">Normal</span>
+        </span>
+        <ul class="item-card-opts" data-field="opts"></ul>
+        <span class="item-card-actions">
+          <button type="button" class="btn btn--small btn--primary" data-action="equip">装備する</button>
+          <button type="button" class="btn btn--small btn--ghost" data-action="sell">売却 +<span data-field="sell">0</span>G</button>
+        </span>
+      </div>
+    </template>
+
+    <!-- HUD スキルチップ -->
+    <template id="tpl-skill-chip">
+      <span class="skill-chip" data-role="skill-chip">
+        <b class="skill-chip-glyph" data-field="glyph">✦</b>
+        <span class="skill-chip-name" data-field="name">-</span>
+        <span class="skill-chip-level" data-field="level">Lv1</span>
+      </span>
+    </template>
+
+    <!-- リザルト行 -->
+    <template id="tpl-stat-row">
+      <li class="stat-row" data-role="stat-row">
+        <span class="stat-row-label" data-field="label">-</span>
+        <span class="stat-row-value" data-field="value">-</span>
+      </li>
+    </template>
+
+    <!-- ドロップ行 -->
+    <template id="tpl-drop-row">
+      <li class="drop-row" data-role="drop-row">
+        <span class="drop-row-name" data-field="name">-</span>
+        <span class="drop-row-rarity" data-field="rarity">Normal</span>
+        <span class="drop-row-note" data-field="note">-</span>
+      </li>
+    </template>
+
+    <!-- トースト -->
+    <template id="tpl-toast">
+      <div class="toast" data-role="toast">
+        <span class="toast-icon" data-field="icon">★</span>
+        <span class="toast-text" data-field="text">-</span>
+      </div>
+    </template>
+
+    <!-- バナー -->
+    <template id="tpl-banner">
+      <div class="banner" data-role="banner">
+        <span class="banner-text" data-field="text">-</span>
+        <span class="banner-sub" data-field="sub"></span>
+      </div>
+    </template>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
