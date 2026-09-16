@@ -31,15 +31,13 @@
   var SAVE_KEY = 'PIXEL_BUSTER_SAGA_SAVE';
 
   var FIELD = { x: 10, y: 10, w: CANVAS_W - 20, h: CANVAS_H - 20 };
-  var LAUNCH_X = 240;
-  var LAUNCH_Y = 618;
 
   var WALL_RESTITUTION = 0.986;
   var OBSTACLE_RESTITUTION = 0.988;
   var ENEMY_RESTITUTION = 0.968;
-  var STOP_SPEED = 85;
+  var STOP_SPEED = 30;
   var MAX_SPEED = 1700;
-  var MIN_PULL = 14;
+  var MIN_PULL = 15;
   var MAX_PULL = 168;
   var MIN_LAUNCH_SPEED = 260;
   var MAX_LAUNCH_SPEED = 1150;
@@ -88,10 +86,11 @@
     obstacle: { restitution: 0.988, friction: 0.06, spin: 0.5 },
     enemy: { restitution: 0.968, friction: 0.14, spin: 0.7 },
     barrel: { restitution: 0.972, friction: 0.1, spin: 0.55 },
-    gear: { restitution: 0.98, friction: 0.05, spin: 0.4 }
+    gear: { restitution: 0.98, friction: 0.05, spin: 0.4 },
+    tight: { restitution: 1.0, friction: 0, spin: 0.6 }
   };
-  var LINEAR_DRAG = 0.28;
-  var QUAD_DRAG = 0.00022;
+  var LINEAR_DRAG = 0.16;
+  var QUAD_DRAG = 0.00008;
   var MAGNUS_K = 0.9;
   var SPIN_DECAY = 0.55;
   var SPIN_DAMAGE_SCALE = 0.01;
@@ -107,13 +106,32 @@
   var GEAR_DIR_BLEND = 0.25;
   var WARP_EXIT_BOOST = 1.05;
 
+  /* ---- パーティユニット / 手番 / 共鳴 / カンカン ---- */
+  var UNIT_RADIUS = 13;
+  var PARTY_CX = 240;
+  var PARTY_CY = 545;
+  var PARTY_RADIUS = 86;
+  var RESONANCE_RADIUS = 165;
+  var RESONANCE_LASER_LEN = 520;
+  var RESONANCE_HEAL = 0.05;
+  var RESONANCE_MISSILES = 4;
+  var RESONANCE_CHAIN_BONUS = 0.35;
+  var TIGHT_LOCK_TIME = 0.22;
+  var KANKAN_MIN_INTERVAL = 40;
+  var KANKAN_SOUND_MAX = 8000;
+  var PLAYER_INVULN = 0.4;
+  var ENEMY_ATTACK_CYCLE = 3;
+  var DROP_CHEST_CHANCE = 0.62;
+  var DROP_HEART_CHANCE = 0.24;
+  var HEART_HEAL_RATIO = 0.06;
+  var DROP_MAGNET_SPEED = 900;
+  var DROP_LIFETIME = 26;
+  var TRAITS = { fire: 'reflect', wind: 'pierce', water: 'reflect', dark: 'pierce' };
+
   var TIMESCALE_WEAK = { scale: 0.25, time: 0.09 };
   var TIMESCALE_CRIT = { scale: 0.45, time: 0.06 };
   var TIMESCALE_BOSS = { scale: 0.15, time: 0.6 };
 
-  var FRIEND_CHAIN_WINDOW = 3.0;
-  var FRIEND_CHAIN_STEP = 0.25;
-  var FRIEND_CHAIN_MAX = 3;
   var SUPPORT_INTERVAL = 2;
   var REVIVE_HP_RATIO = 0.3;
   var PARTY_SIZE = 3;
@@ -589,6 +607,7 @@
       wanderPhase: Math.random() * Math.PI * 2,
       gold: Math.round(base.gold * stageGoldMul(stageIndex)),
       boss: !!base.boss,
+      atkCd: ENEMY_ATTACK_CYCLE,
       spawnAnim: 0.45,
       deathAnim: 0,
       hitCd: 0
@@ -1202,6 +1221,8 @@
   })();
 
   /* ---- 効果音プリセット（実行時に周波数・エンベロープを合成） ---- */
+  var kankanStart = 0;
+  var lastKankan = 0;
   var Sfx = {
     launch: function () {
       Sound.tone({ type: 'sawtooth', freq: 680, endFreq: 190, dur: 0.24, vol: 0.22 });
@@ -1236,6 +1257,22 @@
       Sound.noise({ dur: 0.65, vol: 0.4, filterFrom: 6000, filterTo: 120, q: 1.4 });
       Sound.tone({ type: 'sine', freq: 190, endFreq: 34, dur: 0.6, vol: 0.34 });
       Sound.tone({ type: 'square', freq: 90, endFreq: 30, dur: 0.5, vol: 0.18, delay: 0.02 });
+    },
+    kankan: function (intensity) {
+      var now = Date.now();
+      if (kankanStart === 0) { kankanStart = now; }
+      if (now - kankanStart > KANKAN_SOUND_MAX) { return; }
+      if (now - lastKankan < KANKAN_MIN_INTERVAL) { return; }
+      lastKankan = now;
+      var f = clamp(720 + (intensity || 0) * 46, 720, 2800);
+      Sound.tone({ type: 'square', freq: f, endFreq: f * 1.18, dur: 0.035, vol: 0.11, attack: 0.001 });
+      if ((intensity || 0) > 3) {
+        Sound.tone({ type: 'triangle', freq: f * 2, dur: 0.03, vol: 0.05, attack: 0.001 });
+      }
+    },
+    resetKankan: function () {
+      kankanStart = 0;
+      lastKankan = 0;
     },
     warp: function () {
       Sound.tone({ type: 'sine', freq: 320, endFreq: 1600, dur: 0.12, vol: 0.18 });
@@ -1315,7 +1352,13 @@
       particles: [],
       texts: [],
       friends: [],
-      ball: { x: LAUNCH_X, y: LAUNCH_Y, vx: 0, vy: 0, trail: [], alive: false, bounce: 0, maxBounce: 4, spin: 0, life: 0, omega: 0, pierce: 0, tightBonus: 0 },
+      partyUnits: [],
+      turnIndex: 0,
+      drops: [],
+      dropMagnet: false,
+      resonanceFlags: {},
+      resonanceChain: 0,
+      ball: { x: PARTY_CX, y: PARTY_CY - PARTY_RADIUS, vx: 0, vy: 0, trail: [], alive: false, bounce: 0, maxBounce: 4, spin: 0, life: 0, omega: 0, pierce: 0, tightBonus: 0, tightLock: 0, trait: 'reflect' },
       player: null,
       combo: 0,
       comboTimer: 0,
@@ -1325,16 +1368,13 @@
       shakeTimer: 0,
       shakeHard: false,
       aim: {
-        active: false, pointerX: LAUNCH_X, pointerY: LAUNCH_Y, originX: LAUNCH_X, originY: LAUNCH_Y,
+        active: false, pointerX: PARTY_CX, pointerY: PARTY_CY, originX: PARTY_CX, originY: PARTY_CY,
+        dragX: PARTY_CX, dragY: PARTY_CY,
         power: 0, dirX: 0, dirY: -1, locked: false, lockedPower: 0, lastMove: 0, flick: 0,
         assist: false, samples: [], ghost: null
       },
       pointerId: null,
       pointers: {},
-      friendChain: 0,
-      friendChainTimer: 0,
-      duoMembers: {},
-      duoFired: false,
       partyRevives: 0,
       partyDowned: [],
       carryShots: 0,
@@ -1395,7 +1435,8 @@
       auraCrit: 0,
       auraTaken: 1,
       auraSupportCd: 0,
-      friendRevive: 0
+      friendRevive: 0,
+      invuln: 0
     };
   }
 
@@ -1488,7 +1529,9 @@
     p.name = ev.name;
     p.element = def.element;
     p.friend = ev.friend;
-    p.partyMembers = buildPartyMembers(p.charId, p.star);
+    p.partyMembers = (state.partyUnits && state.partyUnits.length > 0)
+      ? state.partyUnits
+      : buildPartyMembers(p.charId, p.star);
     var aura = partyAuras(p.partyMembers);
     p.auraDmg = aura.dmg;
     p.auraCrit = aura.crit;
@@ -1516,7 +1559,27 @@
     p.shotsPerWave = BASE_SHOTS + st.shotPlus + eq.shotPlus;
     if (fullHeal) { p.hp = p.maxHp; } else { p.hp = clamp(p.hp, 1, p.maxHp); }
     p.shotsLeft = clamp(p.shotsLeft, 0, p.shotsPerWave);
-    state.ball.maxBounce = 4 + p.reflectPlus;
+    if (state.partyUnits && state.partyUnits.length > 0) {
+      for (var ui = 0; ui < state.partyUnits.length; ui += 1) {
+        var unitDef = getCharDef(state.partyUnits[ui].charId);
+        var unitEntry = save.chars[state.partyUnits[ui].charId] || { star: 3, luck: 0 };
+        var unitEv = getEvolution(state.partyUnits[ui].charId, unitEntry.star);
+        state.partyUnits[ui].star = unitEntry.star;
+        state.partyUnits[ui].luck = unitEntry.luck;
+        state.partyUnits[ui].name = unitEv.name;
+        state.partyUnits[ui].glyph = unitEv.glyph;
+        state.partyUnits[ui].friend = unitEv.friend;
+        state.partyUnits[ui].element = unitDef.element;
+        state.partyUnits[ui].color = ELEMENTS[unitDef.element].color;
+        state.partyUnits[ui].dark = ELEMENTS[unitDef.element].dark;
+        state.partyUnits[ui].trait = TRAITS[state.partyUnits[ui].charId] || 'reflect';
+        state.partyUnits[ui].atk = unitEv.atk;
+        state.partyUnits[ui].critRate = unitEv.critRate;
+        state.partyUnits[ui].critDmg = unitEv.critDmg;
+        state.partyUnits[ui].down = (p.partyDown || []).indexOf(state.partyUnits[ui].charId) >= 0;
+      }
+      syncActiveUnit();
+    }
   }
 
   function comboMultiplier() {
@@ -1575,7 +1638,7 @@
     for (i = 0; i < placed.length; i += 1) {
       if (dist(x, y, placed[i].x, placed[i].y) < radius + placed[i].radius + 16) { return false; }
     }
-    if (dist(x, y, LAUNCH_X, LAUNCH_Y) < 190) { return false; }
+    if (dist(x, y, PARTY_CX, PARTY_CY) < 200) { return false; }
     return true;
   }
 
@@ -1626,35 +1689,128 @@
     return enemies;
   }
 
-  function buildFriends() {
+  /* ==========================================================================
+     7-B. パーティユニット（3体・手番交代制）
+     ========================================================================== */
+  function buildPartyUnits(resetPositions) {
     var p = state.player;
-    var members = (p.partyMembers && p.partyMembers.length > 0)
-      ? p.partyMembers
-      : [{ charId: p.charId, name: p.name, glyph: p.glyph, element: p.element, friend: p.friend, isMain: true }];
-    var count = Math.max(members.length, p.friend.count);
-    var list = [];
-    var y = FIELD.y + FIELD.h - 46;
-    for (var i = 0; i < count; i += 1) {
-      var t = count === 1 ? 0.5 : i / (count - 1);
-      var x = lerp(FIELD.x + 52, FIELD.x + FIELD.w - 52, t);
-      var ownerIndex = i % members.length;
-      var owner = members[ownerIndex];
-      list.push({
-        id: 'friend-' + i,
-        x: x,
-        y: y - (i % 2 === 0 ? 0 : 26),
-        r: 11,
-        used: false,
-        pulse: 0,
-        type: owner.friend.type,
-        friend: owner.friend,
-        ownerIndex: ownerIndex,
-        ownerName: owner.name,
-        element: owner.element,
-        color: ELEMENTS[owner.element].color
+    var members = buildPartyMembers(p.charId, p.star);
+    var fallback = ['fire', 'wind', 'water'];
+    while (members.length < PARTY_SIZE) {
+      var fid = fallback[members.length % fallback.length];
+      var fdef = getCharDef(fid);
+      var fentry = save.chars[fid] || { star: 3, luck: 0 };
+      var fev = getEvolution(fid, fentry.star);
+      members.push({
+        charId: fid, star: fentry.star, name: fev.name, glyph: fev.glyph,
+        element: fdef.element, friend: fev.friend, role: ROLES[fid] || ROLES.fire, isMain: false
       });
     }
-    state.friends = list;
+    var existing = state.partyUnits || [];
+    var units = [];
+    for (var i = 0; i < PARTY_SIZE; i += 1) {
+      var m = members[i];
+      var prev = existing[i] && existing[i].charId === m.charId ? existing[i] : null;
+      var def = getCharDef(m.charId);
+      var ev = getEvolution(m.charId, m.star);
+      var slot = partyTriangleSlot(i);
+      units.push({
+        index: i,
+        charId: m.charId,
+        name: m.name,
+        glyph: m.glyph,
+        element: m.element,
+        color: ELEMENTS[def.element].color,
+        dark: ELEMENTS[def.element].dark,
+        star: m.star,
+        luck: charLuckOf(m.charId),
+        friend: ev.friend,
+        role: m.role,
+        trait: TRAITS[m.charId] || 'reflect',
+        atk: ev.atk,
+        critRate: ev.critRate,
+        critDmg: ev.critDmg,
+        x: resetPositions || !prev ? slot.x : prev.x,
+        y: resetPositions || !prev ? slot.y : prev.y,
+        r: UNIT_RADIUS,
+        pulse: 0,
+        resonated: false,
+        down: (p.partyDown || []).indexOf(m.charId) >= 0,
+        isActive: false
+      });
+    }
+    state.partyUnits = units;
+    p.partyMembers = units;
+    if (state.turnIndex >= units.length) { state.turnIndex = 0; }
+    syncActiveUnit();
+    return units;
+  }
+
+  function partyTriangleSlot(index) {
+    /* 正三角形配置（重心=画面中央下部） */
+    var r = PARTY_RADIUS;
+    if (index === 0) { return { x: PARTY_CX, y: PARTY_CY - r }; }
+    var angle = (Math.PI * 2 / 3) * index + Math.PI / 2;
+    return { x: PARTY_CX + Math.cos(angle) * r, y: PARTY_CY + Math.sin(angle) * r };
+  }
+
+  function activeUnit() {
+    if (!state.partyUnits || state.partyUnits.length === 0) { return null; }
+    var idx = ((state.turnIndex % state.partyUnits.length) + state.partyUnits.length) % state.partyUnits.length;
+    return state.partyUnits[idx];
+  }
+
+  function syncActiveUnit() {
+    var p = state.player;
+    var u = activeUnit();
+    if (!p || !u) { return; }
+    var eq = equipTotals();
+    var st = skillTotals(p.skills);
+    var aura = partyAuras(p.partyMembers);
+    var atkMul = 1 + eq.atkPct + st.atkPct;
+    if (p.synergy && p.synergy.berserker_pact) { atkMul *= 2; }
+    u.atk = u.atk || 10;
+    p.atk = u.atk * atkMul * aura.dmg;
+    p.critRate = clamp(u.critRate + eq.critRate + st.critRate + aura.crit, 0, 0.95);
+    p.critDmg = u.critDmg + eq.critDmg + st.critDmg;
+    p.charId = u.charId;
+    p.name = u.name;
+    p.glyph = u.glyph;
+    p.element = u.element;
+    p.star = u.star;
+    p.charLuck = u.luck;
+    p.friend = u.friend;
+    state.ball.trait = u.trait;
+    state.ball.maxBounce = (u.trait === 'reflect' ? 6 : 4) + p.reflectPlus;
+    for (var i = 0; i < state.partyUnits.length; i += 1) {
+      state.partyUnits[i].isActive = (state.partyUnits[i] === u);
+    }
+    state.ball.x = u.x;
+    state.ball.y = u.y;
+    state.ball.vx = 0;
+    state.ball.vy = 0;
+    if (state.aim) {
+      state.aim.originX = u.x;
+      state.aim.originY = u.y;
+      state.aim.pointerX = u.x;
+      state.aim.pointerY = u.y;
+      state.aim.ghost = null;
+    }
+    renderPartyPips();
+  }
+
+  function advanceTurn() {
+    if (!state.partyUnits || state.partyUnits.length === 0) { return; }
+    state.turnIndex = (state.turnIndex + 1) % state.partyUnits.length;
+    syncActiveUnit();
+    var u = activeUnit();
+    if (u) {
+      showBanner('TURN ' + (u.name), u.role.label + ' / ' + traitLabel(u.trait), '');
+    }
+  }
+
+  function traitLabel(trait) {
+    return trait === 'pierce' ? '貫通型' : '反射型';
   }
 
   function aliveEnemies() {
@@ -1758,6 +1914,138 @@
     return dmg;
   }
 
+  /* ==========================================================================
+     9-C. 撃破ドロップ（宝箱 / 回復ハート）＆全回収
+     ========================================================================== */
+  function spawnEnemyDrops(enemy) {
+    var roll = Math.random();
+    if (roll < DROP_CHEST_CHANCE) {
+      var goldValue = playerGoldGain(Math.max(3, Math.round(enemy.gold * 0.8)));
+      state.drops.push({
+        type: 'chest',
+        x: enemy.x + rand(-8, 8),
+        y: enemy.y + rand(-6, 6),
+        vx: rand(-60, 60),
+        vy: rand(-90, -20),
+        r: 8,
+        gold: goldValue,
+        life: DROP_LIFETIME,
+        magnet: false,
+        bob: Math.random() * Math.PI * 2
+      });
+    } else if (roll < DROP_CHEST_CHANCE + DROP_HEART_CHANCE) {
+      state.drops.push({
+        type: 'heart',
+        x: enemy.x + rand(-8, 8),
+        y: enemy.y + rand(-6, 6),
+        vx: rand(-60, 60),
+        vy: rand(-90, -20),
+        r: 8,
+        heal: Math.max(4, Math.round(state.player.maxHp * HEART_HEAL_RATIO)),
+        life: DROP_LIFETIME,
+        magnet: false,
+        bob: Math.random() * Math.PI * 2
+      });
+    }
+  }
+
+  function collectDrop(drop) {
+    var p = state.player;
+    if (drop.type === 'chest') {
+      save.gold += drop.gold;
+      state.runGold += drop.gold;
+      addText(drop.x, drop.y - 12, '+' + drop.gold + 'G', '#f2c75c', 12, false);
+      Sfx.coin();
+    } else {
+      healPlayer(drop.heal, false);
+      addText(drop.x, drop.y - 12, '+' + drop.heal + ' HP', '#6ef08a', 12, false);
+      Sfx.drop('rare');
+    }
+    addParticles(drop.x, drop.y, 8, drop.type === 'chest' ? '#f2c75c' : '#6ef08a', 150, 2.2);
+    updateHud();
+  }
+
+  function updateDrops(dt) {
+    var b = state.ball;
+    for (var i = state.drops.length - 1; i >= 0; i -= 1) {
+      var d = state.drops[i];
+      d.bob += dt * 4;
+      d.life -= dt;
+      if (state.dropMagnet) {
+        var tx = state.ball.x;
+        var ty = state.ball.y;
+        var ang = Math.atan2(ty - d.y, tx - d.x);
+        d.vx = Math.cos(ang) * DROP_MAGNET_SPEED;
+        d.vy = Math.sin(ang) * DROP_MAGNET_SPEED;
+      } else {
+        d.vx *= 0.94;
+        d.vy *= 0.94;
+      }
+      d.x += d.vx * dt;
+      d.y += d.vy * dt;
+      d.x = clamp(d.x, FIELD.x + d.r, FIELD.x + FIELD.w - d.r);
+      d.y = clamp(d.y, FIELD.y + d.r, FIELD.y + FIELD.h - d.r);
+      var reach = state.dropMagnet ? 30 : BALL_RADIUS + d.r + 2;
+      if (state.phase !== 'gameover' && dist(d.x, d.y, b.x, b.y) <= reach) {
+        collectDrop(d);
+        state.drops.splice(i, 1);
+        continue;
+      }
+      if (d.life <= 0) {
+        state.drops.splice(i, 1);
+      }
+    }
+  }
+
+  function collectAllDrops() {
+    if (state.drops.length === 0) { return 0; }
+    var total = 0;
+    for (var i = 0; i < state.drops.length; i += 1) {
+      collectDrop(state.drops[i]);
+      total += 1;
+    }
+    state.drops = [];
+    showToast('残りの宝箱・ハートを全回収（' + total + '個）', '◆', 'gold');
+    return total;
+  }
+
+  function drawDrops() {
+    var ctx = dom.ctx;
+    for (var i = 0; i < state.drops.length; i += 1) {
+      var d = state.drops[i];
+      var bobY = Math.sin(d.bob) * 2;
+      ctx.save();
+      ctx.translate(d.x, d.y + bobY);
+      if (d.type === 'chest') {
+        ctx.fillStyle = '#7a4a12';
+        ctx.fillRect(-7, -6, 14, 12);
+        ctx.fillStyle = '#f2c75c';
+        ctx.fillRect(-7, -6, 14, 4);
+        ctx.fillStyle = '#2a1206';
+        ctx.fillRect(-2, -2, 4, 5);
+        ctx.strokeStyle = '#ffe8b0';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(-7, -6, 14, 12);
+      } else {
+        ctx.fillStyle = '#6ef08a';
+        ctx.beginPath();
+        ctx.arc(-3, -2, 4, 0, Math.PI * 2);
+        ctx.arc(3, -2, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(-7, 0);
+        ctx.lineTo(7, 0);
+        ctx.lineTo(0, 8);
+        ctx.closePath();
+        ctx.fill();
+        ctx.strokeStyle = '#d9ffe4';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
   function killEnemy(enemy, opts) {
     if (!enemy.alive) { return; }
     enemy.alive = false;
@@ -1776,6 +2064,7 @@
     state.runGold += gold;
     addText(enemy.x, enemy.y - enemy.radius - 20, '+' + gold + 'G', '#f2c75c', 12, false);
     Sfx.coin();
+    spawnEnemyDrops(enemy);
     if (enemy.burn > 0 && state.player.synergy.chain_fire) {
       var radius = 92;
       addShockwave(enemy.x, enemy.y, radius, '#ff6a3d');
@@ -1795,6 +2084,8 @@
 
   function damagePlayer(amount, sourceX, sourceY) {
     var p = state.player;
+    if (p.invuln > 0) { return; }
+    p.invuln = PLAYER_INVULN;
     var dmg = Math.max(1, Math.round(amount * p.dmgTakenMult));
     p.hp = Math.max(0, p.hp - dmg);
     addText(state.ball.x, state.ball.y - 22, '-' + dmg, '#ff8fa3', 15, false);
@@ -1828,8 +2119,11 @@
     Sfx.fanfare();
     showBanner('控えが復活！', member.name + ' が身代わりになった', 'friend');
     showToast('サブ『' + member.name + '』が身代わりに → HP ' + p.hp + ' で復活', '＋', 'luck');
-    for (var i = 0; i < state.friends.length; i += 1) {
-      if (state.friends[i].ownerIndex === idx) { state.friends[i].used = true; }
+    for (var i = 0; i < state.partyUnits.length; i += 1) {
+      if (state.partyUnits[i].index === idx) {
+        state.partyUnits[i].down = true;
+        state.partyUnits[i].resonated = true;
+      }
     }
     renderPartyPips();
     updateHud();
@@ -1891,13 +2185,56 @@
     return false;
   }
 
-  function tightGapCheck(x, y, nx, ny) {
-    var px = x + nx * BALL_RADIUS;
-    var py = y + ny * BALL_RADIUS;
-    for (var step = 2; step <= TIGHT_GAP_MAX; step += 2) {
-      if (pointInsideAnySolid(px + nx * step, py + ny * step)) { return true; }
+  function solidDistanceAlong(x, y, dx, dy) {
+    for (var step = 3; step <= 90; step += 3) {
+      var px = x + dx * step;
+      var py = y + dy * step;
+      if (pointInsideAnySolid(px, py)) { return step; }
     }
-    return false;
+    return 90;
+  }
+
+  function enemiesWithin(x, y, radius) {
+    var count = 0;
+    for (var i = 0; i < state.enemies.length; i += 1) {
+      var e = state.enemies[i];
+      if (!e.alive) { continue; }
+      if (dist(x, y, e.x, e.y) <= radius + e.radius) { count += 1; }
+    }
+    return count;
+  }
+
+  function updateTightMode(dt) {
+    var b = state.ball;
+    var sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+    if (sp < 1) {
+      b.tightLock = 0;
+      return false;
+    }
+    var ux = b.vx / sp;
+    var uy = b.vy / sp;
+    var ahead = solidDistanceAlong(b.x, b.y, ux, uy);
+    var behind = solidDistanceAlong(b.x, b.y, -ux, -uy);
+    var gap = ahead + behind;
+    var near = enemiesWithin(b.x, b.y, 62);
+    if (gap <= TIGHT_GAP_MAX || near >= 2) {
+      b.tightLock = TIGHT_LOCK_TIME;
+    } else if (b.tightLock > 0) {
+      b.tightLock -= dt;
+    }
+    return b.tightLock > 0;
+  }
+
+  function tightGapCheck(x, y, nx, ny) {
+    var sx = x + nx * BALL_RADIUS;
+    var sy = y + ny * BALL_RADIUS;
+    var forward = solidDistanceAlong(sx, sy, nx, ny);
+    var backward = solidDistanceAlong(sx, sy, -nx, -ny);
+    return (forward + backward) <= TIGHT_GAP_MAX;
+  }
+
+  function materialFor(base) {
+    return (state.ball.tightLock > 0) ? MATERIALS.tight : base;
   }
 
   function resolveCollision(nx, ny, material, hitX, hitY) {
@@ -1948,17 +2285,22 @@
   function launchBall(dirX, dirY, power) {
     var b = state.ball;
     var p = state.player;
+    var unit = activeUnit();
     var speed = launchSpeed(power, p.speedMul);
-    b.x = LAUNCH_X;
-    b.y = LAUNCH_Y;
+    if (unit) {
+      b.x = unit.x;
+      b.y = unit.y;
+    }
     b.vx = dirX * speed;
     b.vy = dirY * speed;
     b.alive = true;
     b.bounce = 0;
     b.life = 0;
-    b.omega = clamp(dirX * -4 + 6, -10, 14) * (0.5 + power);
+    var spinBase = unit && unit.trait === 'pierce' ? 9 : 6;
+    b.omega = clamp(dirX * -4 + spinBase, -12, 16) * (0.5 + power);
     b.pierce = 0;
     b.tightBonus = 0;
+    b.tightLock = 0;
     b.trail.length = 0;
     p.burstUsed = false;
     state.timeScale = 1;
@@ -1967,18 +2309,12 @@
     p.shotsLeft = Math.max(0, p.shotsLeft - 1);
     state.lastShotIndex += 1;
     resetCombo();
-    state.friendChain = 0;
-    state.friendChainTimer = 0;
-    state.duoMembers = {};
-    state.duoFired = false;
-    if (p.friendRevive > 0) {
-      for (var fi = 0; fi < state.friends.length; fi += 1) {
-        if (state.friends[fi].used && Math.random() < 0.5) {
-          state.friends[fi].used = false;
-          state.friends[fi].pulse = 0.5;
-        }
-      }
+    state.resonanceFlags = {};
+    state.resonanceChain = 0;
+    for (var ri = 0; ri < state.partyUnits.length; ri += 1) {
+      state.partyUnits[ri].resonated = false;
     }
+    Sfx.resetKankan();
     if (p.berserk) {
       var cost = Math.min(Math.round(p.hp * BERSERKER_HP_COST), Math.max(0, p.hp - 1));
       if (cost > 0) {
@@ -1992,37 +2328,41 @@
     updateHud();
   }
 
-  /* ---- サブの自律援護（ターン経過で自動発動） ---- */
+  /* ---- サブの自律援護（ターン経過で自動発動 / 各自の位置から発射） ---- */
   function fireSupportVolley() {
     var p = state.player;
-    if (!p.partyMembers || p.partyMembers.length < 2) { return; }
+    if (!state.partyUnits || state.partyUnits.length < 2) { return; }
     var interval = SUPPORT_INTERVAL + p.auraSupportCd;
     if (interval < 1) { interval = 1; }
     state.supportCounter += 1;
     if (state.supportCounter % interval !== 0) { return; }
-    for (var i = 1; i < p.partyMembers.length; i += 1) {
-      var m = p.partyMembers[i];
-      if (p.partyDown && p.partyDown.indexOf(m.charId) >= 0) { continue; }
+    var active = activeUnit();
+    var fired = 0;
+    for (var i = 0; i < state.partyUnits.length; i += 1) {
+      var u = state.partyUnits[i];
+      if (u === active || u.down) { continue; }
       var target = weakestEnemy();
-      if (!target) { continue; }
-      var el = ELEMENTS[m.element];
-      var color = el.color;
+      if (!target) { break; }
+      var el = ELEMENTS[u.element];
+      var dmg = p.atk * 0.45 * (u.friend ? u.friend.dmgMul : 1);
       state.missiles.push({
-        x: LAUNCH_X + (i === 1 ? -18 : 18),
-        y: LAUNCH_Y - 8,
+        x: u.x + (i === 1 ? -14 : 14),
+        y: u.y - 10,
         vx: 0,
         vy: -260,
-        dmg: p.atk * 0.45 * m.friend.dmgMul,
-        color: color,
+        dmg: dmg,
+        color: el.color,
         life: 4.2,
         target: target,
         trail: [],
         support: true
       });
-      addText(LAUNCH_X + (i === 1 ? -18 : 18), LAUNCH_Y - 30, '援護!', color, 11, false);
-      addParticles(LAUNCH_X + (i === 1 ? -18 : 18), LAUNCH_Y - 10, 8, color, 130, 2.2);
+      addText(u.x, u.y - 30, '援護!', el.color, 11, false);
+      addParticles(u.x, u.y - 10, 8, el.color, 130, 2.2);
+      u.pulse = 0.4;
+      fired += 1;
     }
-    Sfx.friend();
+    if (fired > 0) { Sfx.friend(); }
   }
 
   function weakestEnemy() {
@@ -2046,10 +2386,13 @@
     b.bounce = Math.min(b.bounce + 1, b.maxBounce);
     if (tight) {
       b.tightBonus = clamp(b.tightBonus + TIGHT_BONUS, 0, TIGHT_BONUS_CAP);
+      b.tightLock = TIGHT_LOCK_TIME;
       addCombo(2);
       addText(hitX, hitY - 20, 'カンカン!', '#ffe45c', 12, true);
       addRing(hitX, hitY, 24, '#ffe45c', 0.26, 2);
-      flashScreen('flash--crit');
+      Sfx.kankan(state.combo);
+    } else if (state.combo > 4) {
+      Sfx.kankan(state.combo * 0.5);
     }
     if (speed > COMBO_SPEED_MIN) {
       addCombo(1 + p.comboBonus);
@@ -2083,20 +2426,20 @@
     var res = null;
     if (b.x - BALL_RADIUS < FIELD.x) {
       b.x = FIELD.x + BALL_RADIUS;
-      res = resolveCollision(1, 0, MATERIALS.wall, FIELD.x, b.y);
+      res = resolveCollision(1, 0, materialFor(MATERIALS.wall), FIELD.x, b.y);
       didBounce = true;
     } else if (b.x + BALL_RADIUS > FIELD.x + FIELD.w) {
       b.x = FIELD.x + FIELD.w - BALL_RADIUS;
-      res = resolveCollision(-1, 0, MATERIALS.wall, FIELD.x + FIELD.w, b.y);
+      res = resolveCollision(-1, 0, materialFor(MATERIALS.wall), FIELD.x + FIELD.w, b.y);
       didBounce = true;
     }
     if (b.y - BALL_RADIUS < FIELD.y) {
       b.y = FIELD.y + BALL_RADIUS;
-      res = resolveCollision(0, 1, MATERIALS.wall, b.x, FIELD.y);
+      res = resolveCollision(0, 1, materialFor(MATERIALS.wall), b.x, FIELD.y);
       didBounce = true;
     } else if (b.y + BALL_RADIUS > FIELD.y + FIELD.h) {
       b.y = FIELD.y + FIELD.h - BALL_RADIUS;
-      res = resolveCollision(0, -1, MATERIALS.wall, b.x, FIELD.y + FIELD.h);
+      res = resolveCollision(0, -1, materialFor(MATERIALS.wall), b.x, FIELD.y + FIELD.h);
       didBounce = true;
     }
     if (didBounce) {
@@ -2136,7 +2479,7 @@
         b.y = cy + ny * BALL_RADIUS;
       }
       o.flash = 0.2;
-      var oRes = resolveCollision(nx, ny, MATERIALS.obstacle, cx, cy);
+      var oRes = resolveCollision(nx, ny, materialFor(MATERIALS.obstacle), cx, cy);
       onWallBounce(cx, cy, oRes.tight);
       hit = true;
     }
@@ -2194,7 +2537,7 @@
       var ny = (b.y - barrel.y) / (d || 1);
       b.x = barrel.x + nx * minD;
       b.y = barrel.y + ny * minD;
-      resolveCollision(nx, ny, MATERIALS.barrel, b.x, b.y);
+      resolveCollision(nx, ny, materialFor(MATERIALS.barrel), b.x, b.y);
       barrel.hp -= 1;
       barrel.hitFlash = 0.2;
       addParticles(barrel.x, barrel.y, 6, '#ffcf9a', 140, 2.4);
@@ -2277,7 +2620,10 @@
       var coreReach = CORE_RADIUS + BALL_RADIUS + (Math.abs(b.omega) > 12 ? SPIN_CORE_BONUS : 0);
       var speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
       var weak = dist(b.x, b.y, core.x, core.y) <= coreReach;
-      var canPierce = speed >= PIERCE_SPEED && Math.abs(b.omega) >= PIERCE_SPIN && b.pierce < PIERCE_MAX;
+      var pierceSpeed = (b.trait === 'pierce') ? 620 : PIERCE_SPEED;
+      var pierceSpin = (b.trait === 'pierce') ? 4 : PIERCE_SPIN;
+      var pierceMax = PIERCE_MAX + (b.trait === 'pierce' ? 2 : 0);
+      var canPierce = speed >= pierceSpeed && Math.abs(b.omega) >= pierceSpin && b.pierce < pierceMax;
       if (canPierce) {
         b.pierce += 1;
         b.vx *= PIERCE_SLOW;
@@ -2293,7 +2639,7 @@
         b.x = e.x + nx * minD;
         b.y = e.y + ny * minD;
         e.hitCd = 0.06;
-        resolveCollision(nx, ny, MATERIALS.enemy, e.x + nx * e.radius, e.y + ny * e.radius);
+        resolveCollision(nx, ny, materialFor(MATERIALS.enemy), e.x + nx * e.radius, e.y + ny * e.radius);
       }
       hitEnemyBody(e, weak);
       hit = true;
@@ -2302,24 +2648,122 @@
   }
 
   function collideFriends() {
+    collideResonance();
+  }
+
+  /* ==========================================================================
+     9-B. 共鳴詠唱（レゾナンス）
+     ========================================================================== */
+  function collideResonance() {
     var b = state.ball;
-    for (var i = 0; i < state.friends.length; i += 1) {
-      var f = state.friends[i];
-      if (f.used) { continue; }
-      if (isFriendOwnerDown(f)) { continue; }
-      if (dist(b.x, b.y, f.x, f.y) <= BALL_RADIUS + f.r) {
-        f.used = true;
-        f.pulse = 0.6;
-        triggerFriendCombo(f);
-      }
+    if (state.phase !== 'moving') { return; }
+    var unit = activeUnit();
+    var unitIndex = unit ? unit.index : -1;
+    for (var i = 0; i < state.partyUnits.length; i += 1) {
+      var u = state.partyUnits[i];
+      if (i === unitIndex) { continue; }
+      if (u.down) { continue; }
+      if (dist(b.x, b.y, u.x, u.y) > BALL_RADIUS + u.r) { continue; }
+      if (state.resonanceFlags['u' + i]) { continue; }
+      state.resonanceFlags['u' + i] = true;
+      u.resonated = true;
+      u.pulse = 0.7;
+      triggerResonance(u);
     }
   }
 
-  function isFriendOwnerDown(f) {
+  function triggerResonance(unit) {
     var p = state.player;
-    if (!p || !p.partyDown || f.ownerIndex === undefined || f.ownerIndex === 0) { return false; }
-    if (!p.partyMembers || !p.partyMembers[f.ownerIndex]) { return false; }
-    return p.partyDown.indexOf(p.partyMembers[f.ownerIndex].charId) >= 0;
+    var el = ELEMENTS[unit.element];
+    var chainCount = 0;
+    for (var k in state.resonanceFlags) {
+      if (state.resonanceFlags[k]) { chainCount += 1; }
+    }
+    var chainBonus = 1 + (chainCount - 1) * RESONANCE_CHAIN_BONUS;
+    var baseDamage = p.atk * chainBonus;
+    Sfx.friend();
+    flashScreen('flash--friend');
+    Sfx.kankan(chainCount * 4);
+    addRing(unit.x, unit.y, 52, el.color, 0.45, 3);
+    addParticles(unit.x, unit.y, 26, el.color, 240, 2.8);
+    if (chainCount >= 2) {
+      showBanner('RESONANCE CHAIN x' + chainCount, '共鳴詠唱が同時炸裂！', 'friend');
+      showToast('共鳴連鎖 x' + chainCount + '！（威力 +' + Math.round((chainBonus - 1) * 100) + '%）', '★', 'synergy');
+    } else {
+      showBanner('RESONANCE', unit.name + ' の共鳴詠唱', 'friend');
+      showToast('共鳴詠唱『' + unit.name + '』発動！', '◎', 'synergy');
+    }
+
+    if (unit.element === 'fire') {
+      /* 火: 広範囲を巻き込む特大爆発衝撃波 */
+      addShockwave(unit.x, unit.y, RESONANCE_RADIUS, el.color);
+      addParticles(unit.x, unit.y, 34, '#ff6a3d', 320, 3.2);
+      shakeScreen(true);
+      applyTimeScale(TIMESCALE_CRIT);
+      var fireDmg = baseDamage * 1.6;
+      for (var i = 0; i < state.enemies.length; i += 1) {
+        var e = state.enemies[i];
+        if (!e.alive) { continue; }
+        if (dist(unit.x, unit.y, e.x, e.y) <= RESONANCE_RADIUS + e.radius) {
+          strikeEnemy(e, fireDmg, { color: '#ff6a3d', big: true, burn: true, burnDur: 3, burnDps: p.atk * 0.4 });
+        }
+      }
+      addText(unit.x, unit.y - 40, '爆炎衝撃波', '#ff6a3d', 14, true);
+    } else if (unit.element === 'wind') {
+      /* 風: 最寄りの敵を射抜く直線貫通レーザー */
+      var target = weakestEnemy() || nearestEnemy(unit.x, unit.y, false);
+      var angle = -Math.PI / 2;
+      if (target) { angle = Math.atan2(target.y - unit.y, target.x - unit.x); }
+      addLaser(unit.x, unit.y, angle, RESONANCE_LASER_LEN, el.color);
+      addLaser(unit.x, unit.y, angle + Math.PI, RESONANCE_LASER_LEN * 0.5, el.color);
+      addParticles(unit.x, unit.y, 20, el.color, 260, 2.4);
+      var cosA = Math.cos(angle);
+      var sinA = Math.sin(angle);
+      var windDmg = baseDamage * 1.25;
+      for (var w = 0; w < state.enemies.length; w += 1) {
+        var en = state.enemies[w];
+        if (!en.alive) { continue; }
+        var dx = en.x - unit.x;
+        var dy = en.y - unit.y;
+        var along = dx * cosA + dy * sinA;
+        if (along < 0 || along > RESONANCE_LASER_LEN) { continue; }
+        var perp = Math.abs(-dx * sinA + dy * cosA);
+        if (perp > en.radius + 16) { continue; }
+        addLightning(unit.x, unit.y, en.x, en.y, el.color);
+        strikeEnemy(en, windDmg, { color: el.color, big: true });
+      }
+      addText(unit.x, unit.y - 40, '貫通レーザー', el.color, 14, true);
+    } else {
+      /* 水: 味方HPを5%回復 ＋ 敵追尾水流弾×4発 */
+      healPlayer(p.maxHp * RESONANCE_HEAL, true);
+      addText(unit.x, unit.y + 30, 'HP +' + Math.round(p.maxHp * RESONANCE_HEAL), '#6ef08a', 12, false);
+      addShockwave(unit.x, unit.y, RESONANCE_RADIUS * 0.6, el.color);
+      for (var m = 0; m < RESONANCE_MISSILES; m += 1) {
+        var ang = (Math.PI * 2 * m) / RESONANCE_MISSILES + Math.PI / 4;
+        state.missiles.push({
+          x: unit.x + Math.cos(ang) * 16,
+          y: unit.y + Math.sin(ang) * 16,
+          vx: Math.cos(ang) * 120,
+          vy: Math.sin(ang) * 120,
+          dmg: baseDamage * 0.55,
+          color: el.color,
+          life: 4.5,
+          target: null,
+          trail: []
+        });
+      }
+      for (var c = 0; c < state.enemies.length; c += 1) {
+        var ce = state.enemies[c];
+        if (!ce.alive) { continue; }
+        if (dist(unit.x, unit.y, ce.x, ce.y) <= RESONANCE_RADIUS * 0.6 + ce.radius) {
+          strikeEnemy(ce, baseDamage * 0.8, { color: el.color });
+        }
+      }
+      addText(unit.x, unit.y - 40, '水流弾 x' + RESONANCE_MISSILES, el.color, 14, true);
+    }
+
+    state.resonanceChain = chainCount;
+    renderPartyPips();
   }
 
   function checkGears() {
@@ -2415,6 +2859,8 @@
       checkWarps();
       if (b.vx === 0 && b.vy === 0) { break; }
     }
+    /* カンカン（狭所）判定：挟まれている間は減速ペナルティを免除 */
+    var tight = updateTightMode(dt);
     /* マグヌス効果（回転による弾道の曲がり） */
     var sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
     if (sp > 1 && Math.abs(b.omega) > 0.5) {
@@ -2424,14 +2870,17 @@
       b.vx += perpX * magAcc * dt;
       b.vy += perpY * magAcc * dt;
     }
-    /* 速度比例＋二乗抗力（低速は伸び、高速は速やかに減衰） */
+    /* 速度比例＋二乗抗力（狭所では免除） */
     sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
-    if (sp > 0.0001) {
+    if (sp > 0.0001 && !tight) {
       var decel = (LINEAR_DRAG * sp + QUAD_DRAG * sp * sp) * dt;
       var nextSp = Math.max(0, sp - decel);
       var scale = nextSp / sp;
       b.vx *= scale;
       b.vy *= scale;
+    }
+    if (tight) {
+      b.tightBonus = clamp(b.tightBonus + 0.02, 0, TIGHT_BONUS_CAP);
     }
     b.omega *= Math.pow(0.5, dt * SPIN_DECAY);
     b.spin += (8 + b.omega * 0.4) * dt;
@@ -2455,10 +2904,20 @@
 
   function endShot() {
     var b = state.ball;
+    var unit = activeUnit();
+    var finalX = b.x;
+    var finalY = b.y;
     b.vx = 0;
     b.vy = 0;
     b.alive = false;
     b.trail.length = 0;
+    b.tightLock = 0;
+    /* 待機位置を更新（発射台へは戻さない） */
+    if (unit) {
+      unit.x = clamp(finalX, FIELD.x + unit.r, FIELD.x + FIELD.w - unit.r);
+      unit.y = clamp(finalY, FIELD.y + unit.r, FIELD.y + FIELD.h - unit.r);
+      unit.pulse = 0.5;
+    }
     state.phase = 'idle';
     resetCombo();
     updateHud();
@@ -2468,9 +2927,11 @@
     }
     if (state.player.shotsLeft <= 0) {
       startEnemyTurn();
-    } else {
-      showBanner('SHOT ' + (state.player.shotsLeft) + ' LEFT', '狙いを定めて引っ張れ', '');
+      return;
     }
+    advanceTurn();
+    showBanner('SHOT ' + state.player.shotsLeft + ' LEFT', '次の手番: ' + (activeUnit() ? activeUnit().name : ''), '');
+    updateHud();
   }
 
   /* ==========================================================================
@@ -2481,109 +2942,6 @@
       x: x, y: y, vx: 0, vy: -220, dmg: dmg, color: color,
       life: 3.2, target: null, trail: []
     });
-  }
-
-  function triggerFriendCombo(friend) {
-    var p = state.player;
-    var fr = friend.friend || p.friend;
-    var el = ELEMENTS[friend.element || p.element];
-    var chainBonus = 1 + state.friendChain * FRIEND_CHAIN_STEP;
-    var baseDamage = p.atk * fr.dmgMul * chainBonus;
-    Sfx.friend();
-    flashScreen('flash--friend');
-    if (state.friendChain > 0) {
-      showBanner('フレンドチェーン x' + (state.friendChain + 1), FRIEND_LABEL[fr.type] || '連携攻撃', 'friend');
-    } else {
-      showBanner('友情コンボ', (friend.ownerName ? friend.ownerName + ' / ' : '') + (FRIEND_LABEL[fr.type] || '連携攻撃'), 'friend');
-    }
-    showToast('友情コンボ『' + (FRIEND_LABEL[fr.type] || '連携攻撃') + '』' +
-      (state.friendChain > 0 ? '（チェーン x' + (state.friendChain + 1) + '）' : '') + ' 発動！', '◎', 'synergy');
-    state.friendChain = Math.min(state.friendChain + 1, FRIEND_CHAIN_MAX);
-    state.friendChainTimer = FRIEND_CHAIN_WINDOW;
-    state.duoMembers['m' + friend.ownerIndex] = true;
-    checkDuoSkill();
-    addRing(friend.x, friend.y, 46, el.color, 0.4, 3);
-    addParticles(friend.x, friend.y, 22, el.color, 220, 2.8);
-    var i;
-
-    if (fr.type === 'homing') {
-      for (i = 0; i < fr.count; i += 1) {
-        var ang = (Math.PI * 2 * i) / fr.count + Math.PI / 2;
-        spawnMissile(friend.x + Math.cos(ang) * 16, friend.y + Math.sin(ang) * 16, baseDamage, el.color);
-      }
-      addText(friend.x, friend.y - 34, fr.count + '発 追尾弾', el.color, 13, true);
-    } else if (fr.type === 'laser') {
-      var armCount = fr.count >= 2 ? 4 : 2;
-      var baseAngles = [0, Math.PI / 2, Math.PI, -Math.PI / 2];
-      for (i = 0; i < armCount; i += 1) {
-        var beamAngle = baseAngles[i];
-        addLaser(friend.x, friend.y, beamAngle, fr.radius, el.color);
-        var hitCount = 0;
-        for (var e = 0; e < state.enemies.length; e += 1) {
-          var enemy = state.enemies[e];
-          if (!enemy.alive) { continue; }
-          var dx = enemy.x - friend.x;
-          var dy = enemy.y - friend.y;
-          var along = dx * Math.cos(beamAngle) + dy * Math.sin(beamAngle);
-          if (along < 0 || along > fr.radius) { continue; }
-          var perp = Math.abs(-dx * Math.sin(beamAngle) + dy * Math.cos(beamAngle));
-          if (perp > enemy.radius + 16) { continue; }
-          strikeEnemy(enemy, baseDamage, { color: el.color, big: true });
-          hitCount += 1;
-        }
-        if (hitCount > 0) { state.hitStop = Math.max(state.hitStop, HITSTOP_CRIT); }
-      }
-      addText(friend.x, friend.y - 34, '十字貫通', el.color, 13, true);
-    } else {
-      var radius = Math.max(40, fr.radius);
-      addShockwave(friend.x, friend.y, radius, el.color);
-      for (i = 0; i < state.enemies.length; i += 1) {
-        var target = state.enemies[i];
-        if (!target.alive) { continue; }
-        if (dist(friend.x, friend.y, target.x, target.y) <= radius + target.radius) {
-          strikeEnemy(target, baseDamage, { color: el.color, big: true });
-        }
-      }
-      state.bullets = state.bullets.filter(function (bl) {
-        return dist(friend.x, friend.y, bl.x, bl.y) > radius;
-      });
-      var label = fr.type === 'nova' ? '深淵吸引波' : '衝撃波';
-      addText(friend.x, friend.y - 34, label, el.color, 13, true);
-      if (fr.heal > 0) {
-        healPlayer(p.maxHp * fr.heal, true);
-        addText(friend.x, friend.y + 26, 'HP回復', '#6ef08a', 12, false);
-      }
-    }
-  }
-
-  function checkDuoSkill() {
-    var p = state.player;
-    if (state.duoFired) { return; }
-    var need = p.partyMembers ? p.partyMembers.length : 1;
-    var have = 0;
-    for (var k in state.duoMembers) {
-      if (state.duoMembers[k]) { have += 1; }
-    }
-    if (have < need || have < 2) { return; }
-    state.duoFired = true;
-    var damage = p.atk * 3.2;
-    var radius = 220;
-    applyTimeScale(TIMESCALE_BOSS);
-    flashScreen('flash--evolve');
-    shakeScreen(true);
-    Sfx.evolution();
-    showBanner('DUO SKILL', 'パーティ全員の友情コンボが共鳴！', 'friend');
-    showToast('デュオスキル発動！全体攻撃', '★', 'synergy');
-    addShockwave(LAUNCH_X, LAUNCH_Y, radius, '#ffe45c');
-    addRing(LAUNCH_X, LAUNCH_Y, radius * 0.6, '#ffffff', 0.4, 4);
-    for (var i = 0; i < state.enemies.length; i += 1) {
-      var e = state.enemies[i];
-      if (!e.alive) { continue; }
-      addLightning(LAUNCH_X, LAUNCH_Y, e.x, e.y, '#ffe45c');
-      strikeEnemy(e, damage, { color: '#ffe45c', big: true });
-    }
-    state.bullets.length = 0;
-    healPlayer(p.maxHp * 0.1, true);
   }
 
   function updateMissiles(dt) {
@@ -2683,11 +3041,21 @@
     state.phase = 'enemyturn';
     state.enemyTurnTimer = ENEMY_TURN_TIME;
     resetCombo();
-    showBanner('ENEMY TURN', '敵の反撃！', 'danger');
+    showBanner('ENEMY TURN', 'カウント0の敵が反撃！', 'danger');
+    var attackers = 0;
     for (var i = 0; i < alive.length; i += 1) {
-      for (var s = 0; s < alive[i].shots; s += 1) {
-        fireEnemyVolley(alive[i]);
+      var e = alive[i];
+      if (e.atkCd > 0) { e.atkCd -= 1; }
+      if (e.atkCd > 0) { continue; }
+      attackers += 1;
+      for (var s = 0; s < e.shots; s += 1) {
+        fireEnemyVolley(e);
       }
+      e.atkCd = ENEMY_ATTACK_CYCLE;
+      addRing(e.x, e.y, e.radius + 22, '#ff2d55', 0.4, 3);
+    }
+    if (attackers === 0) {
+      showToast('全員カウントダウン中…（攻撃なし）', '◇', 'luck');
     }
     updateHud();
   }
@@ -2696,8 +3064,7 @@
     var p = state.player;
     p.shotsLeft = p.shotsPerWave;
     state.phase = 'idle';
-    state.ball.x = LAUNCH_X;
-    state.ball.y = LAUNCH_Y;
+    syncActiveUnit();
     updateHud();
     showBanner('YOUR TURN', 'SHOT ' + p.shotsLeft, '');
   }
@@ -2720,6 +3087,7 @@
       if (dist(bl.x, bl.y, b.x, b.y) <= bl.r + BALL_RADIUS) {
         state.bullets.splice(i, 1);
         addParticles(bl.x, bl.y, 10, bl.color, 160, 2.4);
+        if (state.player.invuln > 0) { continue; }
         damagePlayer(bl.dmg, bl.x, bl.y);
       }
     }
@@ -2824,7 +3192,14 @@
 
     if (state.player) {
       var el = ELEMENTS[state.player.element];
-      var rg = ctx.createRadialGradient(LAUNCH_X, LAUNCH_Y, 8, LAUNCH_X, LAUNCH_Y, 200);
+      var focusX = PARTY_CX;
+      var focusY = PARTY_CY;
+      var activeU = activeUnit();
+      if (activeU) {
+        focusX = activeU.x;
+        focusY = activeU.y;
+      }
+      var rg = ctx.createRadialGradient(focusX, focusY, 8, focusX, focusY, 200);
       rg.addColorStop(0, el.color);
       rg.addColorStop(0.15, 'rgba(0,0,0,0)');
       rg.addColorStop(1, 'rgba(0,0,0,0)');
@@ -2977,53 +3352,84 @@
     }
   }
 
-  function drawLaunchPad() {
+  function drawPartyZone() {
     var ctx = dom.ctx;
-    var el = ELEMENTS[state.player.element];
     ctx.save();
-    ctx.strokeStyle = el.color;
-    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.35;
+    ctx.strokeStyle = '#57457f';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 6]);
     ctx.beginPath();
-    ctx.ellipse(LAUNCH_X, LAUNCH_Y, 26 + Math.sin(state.time * 3) * 2, 12, 0, 0, Math.PI * 2);
+    ctx.arc(PARTY_CX, PARTY_CY, PARTY_RADIUS + 26, 0, Math.PI * 2);
     ctx.stroke();
-    ctx.globalAlpha = 0.3;
-    ctx.fillStyle = el.color;
-    ctx.beginPath();
-    ctx.ellipse(LAUNCH_X, LAUNCH_Y, 20, 8, 0, 0, Math.PI * 2);
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.12;
+    ctx.fillStyle = '#7a3fff';
     ctx.fill();
     ctx.restore();
   }
 
-  function drawFriends() {
+  function drawPartyUnits() {
     var ctx = dom.ctx;
-    for (var i = 0; i < state.friends.length; i += 1) {
-      var f = state.friends[i];
-      var color = f.color || ELEMENTS[state.player.element].color;
-      var down = isFriendOwnerDown(f);
+    for (var i = 0; i < state.partyUnits.length; i += 1) {
+      var u = state.partyUnits[i];
+      var pulse = 1 + Math.sin(state.time * 3.4 + i * 1.7) * 0.07 + (u.pulse || 0);
       ctx.save();
-      ctx.translate(f.x, f.y);
-      var pulse = 1 + Math.sin(state.time * 3.4 + i * 1.7) * 0.07;
-      var dim = f.used || down;
-      ctx.globalAlpha = dim ? 0.28 : 1;
-      ctx.fillStyle = dim ? '#3b2f5c' : color;
+      ctx.translate(u.x, u.y);
+      /* 待機オーラ */
+      if (u.isActive && state.phase !== 'moving') {
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        ctx.arc(0, 0, (u.r + 9) * pulse, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      if (u.resonated) {
+        ctx.strokeStyle = '#ffe45c';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, (u.r + 14) * pulse, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      ctx.globalAlpha = u.down ? 0.4 : 1;
+      ctx.fillStyle = u.down ? '#3b2f5c' : u.dark;
       ctx.beginPath();
-      ctx.arc(0, 0, f.r * pulse, 0, Math.PI * 2);
+      ctx.arc(0, 0, u.r * pulse, 0, Math.PI * 2);
       ctx.fill();
-      ctx.globalAlpha = dim ? 0.4 : 1;
-      ctx.strokeStyle = dim ? '#57457f' : '#ffffff';
-      ctx.lineWidth = 2;
+      ctx.fillStyle = u.down ? '#57457f' : u.color;
       ctx.beginPath();
-      ctx.arc(0, 0, f.r * pulse, 0, Math.PI * 2);
+      ctx.arc(0, 0, (u.r - 2.5) * pulse, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = u.isActive ? '#ffffff' : 'rgba(0, 0, 0, .55)';
+      ctx.lineWidth = u.isActive ? 2 : 1.5;
+      ctx.beginPath();
+      ctx.arc(0, 0, u.r * pulse, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.fillStyle = dim ? '#7c719e' : '#0b0813';
-      ctx.font = 'bold 11px "MS Gothic", monospace';
+      ctx.globalAlpha = 1;
+
+      /* グリフ（手番は白、待機は黒） */
+      ctx.fillStyle = u.isActive ? '#ffffff' : '#0b0813';
+      ctx.font = 'bold 13px "MS Gothic", monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(String.fromCharCode(65 + i), 0, 1);
-      if (state.friendChain > 0 && !f.used) {
+      ctx.fillText(u.glyph, 0, 1);
+
+      /* 待機インジケータ */
+      if (!u.isActive && !u.down) {
+        ctx.strokeStyle = 'rgba(255, 228, 92, .85)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, u.r + 4, -Math.PI * 0.75, -Math.PI * 0.25);
+        ctx.stroke();
+      }
+
+      /* 共鳴チェーン表示 */
+      if (u.resonated && !u.down) {
         ctx.fillStyle = '#ffe45c';
         ctx.font = 'bold 9px "MS Gothic", monospace';
-        ctx.fillText('x' + (state.friendChain + 1), 0, -f.r - 6);
+        ctx.fillText('HI', 0, -u.r - 8);
       }
       ctx.restore();
     }
@@ -3119,6 +3525,31 @@
         ctx.fillStyle = ratio > 0.4 ? '#6ef08a' : '#ff2d55';
         ctx.fillRect(e.x - w / 2 + 1, e.y - e.radius - 11, (w - 2) * ratio, 3);
       }
+
+      /* 攻撃カウントダウン表示（3 → 2 → 1 → 0で反撃） */
+      if (e.alive) {
+        var cdText = String(Math.max(0, e.atkCd));
+        var cdColor = e.atkCd <= 1 ? '#ff2d55' : (e.atkCd === 2 ? '#f2c75c' : '#9b8fbb');
+        ctx.save();
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.font = 'bold ' + (e.boss ? 16 : 13) + 'px "MS Gothic", monospace';
+        ctx.fillStyle = 'rgba(0, 0, 0, .7)';
+        ctx.beginPath();
+        ctx.arc(e.x, e.y - e.radius - 22, e.boss ? 12 : 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = cdColor;
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(e.x, e.y - e.radius - 22, e.boss ? 12 : 9, 0, Math.PI * 2);
+        ctx.stroke();
+        if (e.atkCd <= 1) {
+          ctx.globalAlpha = 0.6 + Math.sin(state.time * 12) * 0.4;
+        }
+        ctx.fillStyle = cdColor;
+        ctx.fillText(cdText, e.x, e.y - e.radius - 21);
+        ctx.restore();
+      }
     }
   }
 
@@ -3196,6 +3627,9 @@
 
     ctx.save();
     ctx.translate(b.x, b.y);
+    if (state.player && state.player.invuln > 0) {
+      ctx.globalAlpha = 0.35 + Math.abs(Math.sin(state.time * 22)) * 0.65;
+    }
     ctx.shadowColor = el.color;
     ctx.shadowBlur = b.alive ? 16 : 8;
     ctx.fillStyle = el.dark;
@@ -3227,6 +3661,20 @@
         ctx.fillRect(b.x - b.bounce * 3 + i * 6 + 2, b.y + BALL_RADIUS + 6, 4, 4);
       }
     }
+    if (b.alive && b.tightLock > 0) {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255, 228, 92, .85)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(b.x, b.y, BALL_RADIUS + 7 + Math.sin(state.time * 18) * 2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#ffe45c';
+      ctx.font = 'bold 10px "MS Gothic", monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('カンカン!', b.x, b.y - BALL_RADIUS - 20);
+      ctx.restore();
+    }
     if (b.alive && state.combo > 1) {
       ctx.save();
       ctx.fillStyle = '#ff8f6a';
@@ -3239,11 +3687,15 @@
   }
 
   /* ---- ゴースト弾道（本物の物理をそのまま予測計算） ---- */
-  function simulateShot(dirX, dirY, power) {
+  function simulateShot(dirX, dirY, power, ox, oy) {
     var p = state.player;
+    var unit = activeUnit();
+    var startX = (ox === undefined || ox === null) ? (unit ? unit.x : PARTY_CX) : ox;
+    var startY = (oy === undefined || oy === null) ? (unit ? unit.y : PARTY_CY) : oy;
+    var trait = unit ? unit.trait : 'reflect';
     var speed = launchSpeed(power, p.speedMul);
     var sim = {
-      x: LAUNCH_X, y: LAUNCH_Y,
+      x: startX, y: startY,
       vx: dirX * speed, vy: dirY * speed,
       omega: 0
     };
@@ -3369,7 +3821,7 @@
         sim.vy *= k;
       }
     }
-    return { points: points, hits: hits, coreHit: coreHit, combo: combo, damage: Math.round(damage) };
+    return { points: points, hits: hits, coreHit: coreHit, combo: combo, damage: Math.round(damage), trait: trait };
   }
 
   function drawAimGuide() {
@@ -3379,7 +3831,10 @@
     var el = ELEMENTS[state.player.element];
 
     if (aim.active && aim.power > 0.02) {
-      var ghost = aim.ghost || simulateShot(aim.dirX, aim.dirY, aim.power);
+      var unitNow = activeUnit();
+      var ox = unitNow ? unitNow.x : aim.originX;
+      var oy = unitNow ? unitNow.y : aim.originY;
+      var ghost = aim.ghost || simulateShot(aim.dirX, aim.dirY, aim.power, ox, oy);
       var points = ghost.points;
       for (var i = 0; i < points.length; i += 1) {
         ctx.globalAlpha = 0.6 - (i / points.length) * 0.45;
@@ -3410,12 +3865,12 @@
       }
 
       var arrowLen = 30 + aim.power * 70;
-      var tipX = LAUNCH_X + aim.dirX * arrowLen;
-      var tipY = LAUNCH_Y + aim.dirY * arrowLen;
+      var tipX = ox + aim.dirX * arrowLen;
+      var tipY = oy + aim.dirY * arrowLen;
       ctx.strokeStyle = aim.locked ? '#ffe45c' : '#ffffff';
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(LAUNCH_X, LAUNCH_Y);
+      ctx.moveTo(ox, oy);
       ctx.lineTo(tipX, tipY);
       ctx.stroke();
 
@@ -3467,12 +3922,25 @@
         ctx.fillStyle = '#47d9ff';
         ctx.fillText('ASSIST ON', barX + barW + 5, barY + 52);
       }
+      var ready = [];
+      for (var ru = 0; ru < state.partyUnits.length; ru += 1) {
+        var pu = state.partyUnits[ru];
+        if (pu.isActive || pu.down) { continue; }
+        ready.push(pu.element === 'fire' ? '炎' : (pu.element === 'wind' ? '風' : '水'));
+      }
+      if (ready.length > 0) {
+        ctx.fillStyle = 'rgba(255, 228, 92, .85)';
+        ctx.fillText('共鳴待機 ' + ready.join('/'), barX + barW + 5, barY + (state.player.shotsLeft <= 1 ? 66 : 52));
+      }
     } else if (state.phase === 'idle') {
-      ctx.fillStyle = 'rgba(236, 231, 251, .5)';
+      var idleUnit = activeUnit();
+      var ix = idleUnit ? idleUnit.x : PARTY_CX;
+      var iy = idleUnit ? idleUnit.y : PARTY_CY;
+      ctx.fillStyle = 'rgba(236, 231, 251, .55)';
       ctx.font = '11px "MS Gothic", monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('引っ張って離すと射出', LAUNCH_X, LAUNCH_Y + 36);
+      ctx.fillText('どこからでも引っ張って離すと射出', ix, iy + 34);
     }
   }
 
@@ -3579,8 +4047,9 @@
     drawGears();
     drawWarps();
     drawBarrels();
-    drawLaunchPad();
-    drawFriends();
+    drawPartyZone();
+    drawDrops();
+    drawPartyUnits();
     drawAimGuide();
     drawEnemies();
     drawBullets();
@@ -3630,26 +4099,34 @@
     var host = dom.hudParty;
     var p = state.player;
     if (!host || !p) { return; }
-    var members = p.partyMembers || [];
+    var members = (state.partyUnits && state.partyUnits.length > 0) ? state.partyUnits : (p.partyMembers || []);
     clear(host);
     for (var i = 0; i < members.length; i += 1) {
       var m = members[i];
       var pip = document.createElement('span');
-      pip.className = 'party-pip' + (i === 0 ? ' is-main' : '');
+      pip.classList.add('party-pip');
+      if (i === 0) { pip.classList.add('is-main'); }
       pip.setAttribute('data-element', m.element);
-      var down = (p.partyDown || []).indexOf(m.charId) >= 0;
-      if (down) { pip.classList.add('is-down'); }
+      if (m.isActive) { pip.classList.add('is-active'); }
+      if (m.down) { pip.classList.add('is-down'); }
       var glyph = document.createElement('b');
       glyph.className = 'party-pip-glyph';
       glyph.textContent = m.glyph;
       pip.appendChild(glyph);
       var name = document.createElement('span');
-      name.textContent = (i === 0 ? 'MAIN ' : 'SUB ' + i + ' ') + (down ? '×' : m.name);
+      var label = m.isActive ? '▶ ' : '';
+      name.textContent = label + (m.down ? '×' : m.name);
       pip.appendChild(name);
       var role = document.createElement('span');
       role.className = 'party-pip-role';
-      role.textContent = m.role.label;
+      role.textContent = m.role.label + (m.trait ? ' / ' + traitLabel(m.trait) : '');
       pip.appendChild(role);
+      if (m.resonated) {
+        var mark = document.createElement('span');
+        mark.className = 'party-pip-role';
+        mark.textContent = '共鳴';
+        pip.appendChild(mark);
+      }
       host.appendChild(pip);
     }
   }
@@ -3962,30 +4439,36 @@
     state.enemyTurnTimer = 0;
     state.warpCooldown = 0;
     state.rerollCount = 0;
-    state.ball.x = LAUNCH_X;
-    state.ball.y = LAUNCH_Y;
     state.ball.vx = 0;
     state.ball.vy = 0;
     state.ball.alive = false;
     state.ball.bounce = 0;
+    state.ball.pierce = 0;
+    state.ball.tightBonus = 0;
+    state.ball.tightLock = 0;
     state.ball.trail.length = 0;
+    state.drops = [];
+    state.dropMagnet = false;
+    state.resonanceFlags = {};
+    state.resonanceChain = 0;
+    state.player.partyDown = [];
+    state.partyDowned = [];
+    buildPartyUnits(true);
+    state.turnIndex = 0;
+    syncActiveUnit();
     state.player.shotsLeft = state.player.shotsPerWave + clamp(state.carryShots, 0, CARRY_SHOT_MAX);
     state.carryShots = 0;
     state.player.burstUsed = false;
     state.partyDowned = [];
     state.player.partyDown = [];
     state.supportCounter = 0;
-    state.friendChain = 0;
-    state.friendChainTimer = 0;
-    state.duoMembers = {};
-    state.duoFired = false;
     state.timeScale = 1;
     state.timeScaleTimer = 0;
     for (var i = 0; i < state.barrels.length; i += 1) {
       state.barrels[i].hp = state.barrels[i].maxHp;
       state.barrels[i].alive = true;
     }
-    buildFriends();
+    buildPartyUnits(true);
     updateHud();
     showBanner('WAVE ' + waveIndex + ' / ' + WAVES_PER_STAGE, state.pattern.name, '');
     if (bossAlive()) {
@@ -4118,6 +4601,9 @@
     if (state.phase === 'result' || state.phase === 'gameover') { return; }
     state.phase = 'result';
     Sfx.waveClear();
+    state.dropMagnet = true;
+    collectAllDrops();
+    state.dropMagnet = false;
     state.carryShots = clamp(state.player.shotsLeft, 0, CARRY_SHOT_MAX);
     var isStageClear = state.waveIndex >= WAVES_PER_STAGE;
     var drops = rollDrops(isStageClear ? 'stage' : 'wave');
@@ -4265,7 +4751,8 @@
         clear(tagsHost);
         for (var t = 0; t < def.tags.length; t += 1) {
           var tagEl = document.createElement('span');
-          tagEl.className = 'tag tag--' + def.tags[t];
+          tagEl.classList.add('tag');
+          tagEl.classList.add('tag--' + def.tags[t]);
           tagEl.textContent = TAG_LABEL[def.tags[t]] || def.tags[t];
           tagsHost.appendChild(tagEl);
         }
@@ -4279,7 +4766,7 @@
     }
     if (state.skillChoices.length === 0) {
       var none = document.createElement('p');
-      none.className = 'empty-note';
+      none.classList.add('empty-note');
       none.textContent = '取得可能なスキルがありません。ゴールドを受け取って進みましょう。';
       host.appendChild(none);
     }
@@ -4304,7 +4791,7 @@
         showBanner(syn.name, 'シナジー成立', 'friend');
         flashScreen('flash--evolve');
         Sfx.fanfare();
-        addText(LAUNCH_X, LAUNCH_Y - 52, syn.name, '#ffe45c', 17, true);
+        addText(activeUnit() ? activeUnit().x : PARTY_CX, (activeUnit() ? activeUnit().y : PARTY_CY) - 52, syn.name, '#ffe45c', 17, true);
       }
     }
     Sfx.ui();
@@ -4840,10 +5327,15 @@
   function updateAimFromPoint(px, py) {
     var aim = state.aim;
     var now = state.time;
+    var unit = activeUnit();
+    /* 見た目の起点は手番キャラの現在位置 */
+    aim.originX = unit ? unit.x : aim.dragX;
+    aim.originY = unit ? unit.y : aim.dragY;
     aim.pointerX = px;
     aim.pointerY = py;
-    var dx = aim.originX - px;
-    var dy = aim.originY - py;
+    /* 発射ベクトル＝ドラッグの逆方向（どこからドラッグしても可） */
+    var dx = aim.dragX - px;
+    var dy = aim.dragY - py;
     var len = Math.sqrt(dx * dx + dy * dy);
     if (len < 0.001) {
       aim.power = 0;
@@ -4882,14 +5374,17 @@
   function applyAimAssist(dirX, dirY) {
     var p = state.player;
     if (!p || p.shotsLeft > 1) { return { x: dirX, y: dirY, used: false }; }
+    var unit = activeUnit();
+    var ox = unit ? unit.x : state.aim.originX;
+    var oy = unit ? unit.y : state.aim.originY;
     var best = null;
     var bestAngle = AIM_ASSIST_ANGLE;
     for (var i = 0; i < state.enemies.length; i += 1) {
       var e = state.enemies[i];
       if (!e.alive) { continue; }
       var core = corePosition(e);
-      var cx = core.x - LAUNCH_X;
-      var cy = core.y - LAUNCH_Y;
+      var cx = core.x - ox;
+      var cy = core.y - oy;
       var cl = Math.sqrt(cx * cx + cy * cy);
       if (cl < 1) { continue; }
       var nx = cx / cl;
@@ -4934,7 +5429,7 @@
     var power = aim.locked ? aim.lockedPower : aim.power;
     var dirX = aim.dirX;
     var dirY = aim.dirY;
-    var pullLength = dist(aim.originX, aim.originY, aim.pointerX, aim.pointerY);
+    var pullLength = dist(aim.dragX, aim.dragY, aim.pointerX, aim.pointerY);
     aim.active = false;
     aim.locked = false;
     state.pointerId = null;
@@ -4972,6 +5467,8 @@
     aim.active = true;
     aim.originX = pt.x;
     aim.originY = pt.y;
+    aim.dragX = pt.x;
+    aim.dragY = pt.y;
     aim.pointerX = pt.x;
     aim.pointerY = pt.y;
     aim.power = 0;
@@ -5385,14 +5882,8 @@
       if (state.comboTimer <= 0) { resetCombo(); }
     }
     if (state.warpCooldown > 0) { state.warpCooldown -= dt; }
-    if (state.friendChainTimer > 0) {
-      state.friendChainTimer -= dt;
-      if (state.friendChainTimer <= 0) {
-        state.friendChain = 0;
-        state.duoMembers = {};
-        state.duoFired = false;
-      }
-    }
+    updateDrops(dt);
+    if (state.player.invuln > 0) { state.player.invuln -= dt; }
 
     var i;
     for (i = 0; i < state.obstacles.length; i += 1) {
@@ -5408,8 +5899,8 @@
     for (i = 0; i < state.warps.length; i += 1) {
       if (state.warps[i].pulse > 0) { state.warps[i].pulse -= dt * 2; }
     }
-    for (i = 0; i < state.friends.length; i += 1) {
-      if (state.friends[i].pulse > 0) { state.friends[i].pulse -= dt * 2; }
+    for (i = 0; i < state.partyUnits.length; i += 1) {
+      if (state.partyUnits[i].pulse > 0) { state.partyUnits[i].pulse -= dt * 2; }
     }
 
     var sdt = dt * state.timeScale;
@@ -5418,8 +5909,11 @@
       var aimTick = Math.floor(state.time * 30);
       if (state.aim.ghostTick !== aimTick) {
         state.aim.ghostTick = aimTick;
+        var aimUnit = activeUnit();
         state.aim.ghost = simulateShot(state.aim.dirX, state.aim.dirY,
-          state.aim.locked ? state.aim.lockedPower : state.aim.power);
+          state.aim.locked ? state.aim.lockedPower : state.aim.power,
+          aimUnit ? aimUnit.x : state.aim.originX,
+          aimUnit ? aimUnit.y : state.aim.originY);
       }
     }
     updateEnemies(sdt);
