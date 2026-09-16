@@ -84,6 +84,8 @@
           <span class="hud-burst-state" id="hud-burst-state">READY</span>
         </div>
 
+        <div class="hud-party" id="hud-party"></div>
+
         <div class="hud-skills" id="hud-skills"></div>
       </div>
 
@@ -171,6 +173,12 @@
         </header>
 
         <div class="char-select-body">
+          <div class="party-bar" id="party-bar">
+            <span class="party-bar-label">PARTY</span>
+            <span class="party-slot is-main" id="party-slot-main" data-slot="main">MAIN: -</span>
+            <span class="party-slot" id="party-slot-sub0" data-slot="sub0">SUB1: -</span>
+            <span class="party-slot" id="party-slot-sub1" data-slot="sub1">SUB2: -</span>
+          </div>
           <div class="char-list" id="char-list"></div>
 
           <div class="char-detail is-hidden" id="char-detail">
@@ -189,7 +197,10 @@
             <ul class="stat-list" id="char-detail-stats"></ul>
             <p class="char-detail-friend" id="char-detail-friend">友情コンボ: -</p>
             <div class="char-detail-evolve">
-              <button type="button" class="btn btn--accent btn--small" id="btn-evolve">進化させる</button>
+              <span class="evolve-actions">
+                <button type="button" class="btn btn--accent btn--small" id="btn-evolve">進化させる</button>
+                <button type="button" class="btn btn--small" id="btn-party-sub">サブに編成</button>
+              </span>
               <span class="evolve-cost" id="evolve-cost">必要素材: -</span>
             </div>
           </div>
@@ -224,7 +235,7 @@
       <div class="modal-card modal-card--wide">
         <header class="modal-head">
           <h2 class="modal-title">INVENTORY</h2>
-          <p class="modal-desc" id="inv-summary">GOLD <b id="inv-gold">0</b> / LUCK <b id="inv-luck">0</b> / 最高 STAGE <b id="inv-best">1-1</b></p>
+          <p class="modal-desc" id="inv-summary">GOLD <b id="inv-gold">0</b> / LUCK <b id="inv-luck">0</b> / 最高 STAGE <b id="inv-best">1-1</b> / 天井 <b id="inv-pity">E0 C0</b></p>
         </header>
 
         <nav class="tab-bar">
@@ -255,7 +266,11 @@
           </div>
 
           <div class="tab-panel" id="inv-panel-items" data-panel="items">
-            <p class="panel-note">レアリティが高いほど強力ですが、<b>Cursed</b> は被ダメージが2倍になります。</p>
+            <p class="panel-note">レアリティが高いほど強力ですが、<b>Cursed</b> は被ダメージが2倍になります。同名＋同レアの装備は <b>合成</b> で強化できます。</p>
+            <div class="panel-actions">
+              <button type="button" class="btn btn--small btn--ghost" id="btn-auto-sell">未使用のNormal/Rareを自動売却</button>
+              <span class="panel-actions-note" id="inv-auto-sell-note">ロック中の装備は保護されます</span>
+            </div>
             <div class="item-list" id="inventory-list"></div>
             <p class="empty-note is-hidden" id="inv-empty">装備品を持っていません。</p>
           </div>
@@ -356,45 +371,63 @@
 
         <h3 class="help-head">1. 操作</h3>
         <ul class="help-list">
-          <li>自分の球を <b>マウスドラッグ / タッチスワイプ</b> して<strong>逆方向に引っ張る</strong>とガイド矢印が伸びます。</li>
-          <li>指を離した瞬間に、引いた方向と逆へ <b>初速</b> が与えられて射出されます。</li>
-          <li>球が動いている間にフィールドを <b>タップ</b> すると <b>タップバースト</b> が発動します（1ショットにつき1回）。</li>
-          <li>ショットを使い切る前に敵を全滅させればウェーブクリアです。</li>
+          <li>フィールドの<b>どこからでもドラッグ</b>を始められます。<strong>引いた方向と逆</strong>へ球が飛びます。</li>
+          <li>威力は <b>引き量 ＋ 離す直前のフリック速度</b> の合成で決まります（弱く引いても素早く弾けば強くなります）。</li>
+          <li>引いたまま <b>0.6秒静止</b> すると <b>パワーロック</b>。←→キーで ±2% の微調整、<b>R</b>キーで射出、<b>Esc</b>でキャンセルできます。</li>
+          <li>軌道ガイドは<b>実際の物理で予測</b>しており、命中数・予測ダメージ・弱点コア命中位置（赤十字）を表示します。</li>
+          <li>残りショットが1回のときは <b>エイムアシスト</b> が有効になり、コア方向±7°のガイドが吸着します。</li>
+          <li>球が動いている間にフィールドを <b>タップ</b> すると <b>タップバースト</b>（1ショット1回）。<b>2本指タップ</b>で照準キャンセル。</li>
+          <li>使い切らなかったショットは <b>最大2まで次のウェーブへ持ち越し</b>できます。</li>
         </ul>
 
         <h3 class="help-head">2. バトルシステム</h3>
         <ul class="help-list">
-          <li><b>反射</b>: 壁・障害物・敵に当たると弾性反射します。速度はわずかに減衰し、一定速度を下回ると停止して次のショットに移ります。</li>
-          <li><b>弱点コア</b>: 各敵の中心からオフセットされた半径8pxのコア。命中すると <b>ダメージ3倍</b> かつ <b>ヒットストップ</b> が発生します。</li>
-          <li><b>コンボ</b>: 壁や障害物との隙間で高速ヒットを連ねるとコンボ数が増え、ダメージ倍率が <b>1.0 + (combo × 0.05)</b> 倍になります（コンボ上限は60＝最大 x4.0）。</li>
-          <li><b>友情コンボ</b>: 移動中の球が味方待機球に触れると即時発動します。追尾弾・十字貫通レーザー・衝撃波の3系統があります。</li>
+          <li><b>反射と材質</b>: 壁・障害物・敵・バレルで反発係数と摩擦が異なり、斜め衝突では<b>回転（スピン）</b>が発生します。</li>
+          <li><b>スピン＆マグヌス</b>: 回転が高いと弾道が曲がり、弱点コアの判定が広がり（+1.5px）、ダメージも増加します。</li>
+          <li><b>貫通</b>: 速度900以上＋スピン8以上で敵を貫きます（貫通ごとに減速・最大4体・コンボ+2）。</li>
+          <li><b>弱点コア</b>: 中心からオフセットされた半径8pxのコア。命中すると <b>ダメージ3倍</b>＋<b>スローモーション</b>が入ります。</li>
+          <li><b>コンボ</b>: 壁や障害物との隙間で高速ヒットを連ねるとコンボが増え、ダメージ倍率が <b>1.0 + (combo × 0.05)</b>（上限60＝最大 x4.0）になります。</li>
+          <li><b>カンカン</b>: 狭い隙間（54px以内）での反射はコンボ+2・与ダメージ+10%（最大+50%）。</li>
           <li><b>タップバースト</b>: その場で停止し、半径80pxの大爆発衝撃波で全体ダメージ＋敵弾消去。</li>
         </ul>
 
-        <h3 class="help-head">3. ギミック</h3>
+        <h3 class="help-head">3. パーティ</h3>
         <ul class="help-list">
-          <li><b>誘爆バレル</b>: 耐久3。3ヒットで周囲に特大範囲ダメージ。</li>
-          <li><b>加速板（アクセルギア）</b>: 通過時に進行方向へ <b>1.8倍</b> 加速（一定速度以上では加速しません）。コンボ稼ぎの要です。</li>
-          <li><b>ワープホール</b>: IN / OUT のペアで瞬間移動。速度ベクトルは維持されます。</li>
+          <li>キャラ選択画面で <b>MAIN＋SUB2体</b>の3人編成が可能です（「サブに編成」ボタン）。</li>
+          <li>待機球は各メンバーの友情コンボを担当し、<b>ターンごとに交代</b>して発動します。</li>
+          <li><b>フレンドチェーン</b>: 連続発動で威力+25%/段（最大3段）。<b>3人全員が同一ターンに発動するとデュオスキル</b>が炸裂します。</li>
+          <li><b>自律援護</b>: サブは2ショットごとに自動で追尾弾を放ちます（HPの低い敵を優先）。</li>
+          <li><b>役割オーラ</b>: アタッカー=与ダメ+15% / メイジ=クリ率+8% / タンク=被ダメ-20% / サポート=待機球の再活性。</li>
+          <li>HPが0になっても控えが残っていれば、サブが身代わりになり <b>HP30%で復活</b>します。</li>
         </ul>
 
-        <h3 class="help-head">4. シナジー</h3>
+        <h3 class="help-head">4. ギミック</h3>
+        <ul class="help-list">
+          <li><b>誘爆バレル</b>: 耐久3。3ヒットで周囲に特大範囲ダメージ。</li>
+          <li><b>加速板（アクセルギア）</b>: 通過時に進行方向へ <b>1.8倍</b> 加速（一定速度以上では加速しません）。</li>
+          <li><b>ワープホール</b>: IN / OUT のペアで瞬間移動。速度ベクトルは維持され、出射時にわずかに加速します。</li>
+        </ul>
+
+        <h3 class="help-head">5. シナジー</h3>
         <ul class="help-list">
           <li><b>跳弾雷撃</b>（reflect + lightning）: 壁反射のたびに最寄りの敵へ落雷。</li>
           <li><b>連鎖発火</b>（fire + crit）: クリティカル時に着火させ、撃破時に周囲へ誘爆。</li>
           <li><b>狂戦士の契約</b>（fire + crit + reflect）: 現在HPを10%消費する代わりに攻撃力+100%、与ダメージの15%を吸収。</li>
         </ul>
 
-        <h3 class="help-head">5. 育成とハクスラ</h3>
+        <h3 class="help-head">6. 装備とドロップ</h3>
         <ul class="help-list">
-          <li>キャラは全4種（火 / 風 / 水 / 闇）、それぞれ <b>★3 → ★4 → ★5</b> の3段階進化。進化で友情コンボが大幅強化されます。</li>
           <li>装備は <b>武器 / レリック</b> の2スロット。Normal / Rare / Epic / Cursed の4レアリティとランダムOPが抽選されます。</li>
-          <li>進行状況は <code>localStorage</code> のキー <code>PIXEL_BUSTER_SAGA_SAVE</code> に自動保存されます。</li>
+          <li><b>合成</b>: 同名＋同レアの装備を掛け合わせ、新オプション追加（最大5OP）または強化値 <b>＋1〜＋3</b> を得られます。</li>
+          <li><b>浄化</b>: 150Gで呪い（被ダメージ2倍）を除去できます。<b>ロック</b>で売却・合成から保護できます。</li>
+          <li><b>天井（ピティ）</b>: Epic 24回 / Cursed 60回 未排出で確定ドロップします。カウンタはインベントリに表示。</li>
+          <li>リザルトでは装備の<b>比較（差分）</b>が表示され、強い装備かどうかが即座に分かります。</li>
         </ul>
 
-        <h3 class="help-head">6. ショートカット</h3>
+        <h3 class="help-head">7. ショートカット</h3>
         <ul class="help-list">
-          <li><b>Esc</b>: ポーズ / <b>I</b>: 装備 / <b>M</b>: サウンド / <b>H</b>: この画面 / <b>Space</b>: タップバースト</li>
+          <li><b>Esc</b>: ポーズ / 照準キャンセル、<b>I</b>: 装備、<b>M</b>: サウンド、<b>H</b>: この画面、<b>Space</b>: タップバースト</li>
+          <li><b>←→↑↓</b>: パワーロック中の威力微調整、<b>R</b>: ロックした威力で射出</li>
         </ul>
 
         <div class="modal-actions">
@@ -441,11 +474,16 @@
         <span class="item-card-head">
           <span class="item-card-slot" data-field="slot">武器</span>
           <span class="item-card-name" data-field="name">-</span>
+          <span class="item-card-plus" data-field="plus"></span>
           <span class="item-card-rarity" data-field="rarity">Normal</span>
         </span>
         <ul class="item-card-opts" data-field="opts"></ul>
+        <span class="item-card-note" data-field="note"></span>
         <span class="item-card-actions">
           <button type="button" class="btn btn--small btn--primary" data-action="equip">装備する</button>
+          <button type="button" class="btn btn--small" data-action="fuse">合成</button>
+          <button type="button" class="btn btn--small btn--ghost" data-action="purge">浄化</button>
+          <button type="button" class="btn btn--small btn--ghost" data-action="lock">ロック</button>
           <button type="button" class="btn btn--small btn--ghost" data-action="sell">売却 +<span data-field="sell">0</span>G</button>
         </span>
       </div>

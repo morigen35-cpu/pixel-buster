@@ -37,7 +37,6 @@
   var WALL_RESTITUTION = 0.986;
   var OBSTACLE_RESTITUTION = 0.988;
   var ENEMY_RESTITUTION = 0.968;
-  var AIR_DRAG = 0.9935;
   var STOP_SPEED = 85;
   var MAX_SPEED = 1700;
   var MIN_PULL = 14;
@@ -74,6 +73,74 @@
   var SKIP_GOLD_BASE = 20;
   var LUCK_DROP_PER_POINT = 0.02;
   var LUCK_RARE_PER_POINT = 0.004;
+
+  /* ---- Battle Core 2.0 定数 ---- */
+  var FLICK_WINDOW = 0.12;
+  var FLICK_SPEED_MAX = 1500;
+  var FLICK_WEIGHT = 0.35;
+  var POWER_LOCK_TIME = 0.6;
+  var POWER_STEP = 0.02;
+  var AIM_ASSIST_ANGLE = 0.122;
+  var CARRY_SHOT_MAX = 2;
+
+  var MATERIALS = {
+    wall: { restitution: 0.986, friction: 0.03, spin: 0.35 },
+    obstacle: { restitution: 0.988, friction: 0.06, spin: 0.5 },
+    enemy: { restitution: 0.968, friction: 0.14, spin: 0.7 },
+    barrel: { restitution: 0.972, friction: 0.1, spin: 0.55 },
+    gear: { restitution: 0.98, friction: 0.05, spin: 0.4 }
+  };
+  var LINEAR_DRAG = 0.28;
+  var QUAD_DRAG = 0.00022;
+  var MAGNUS_K = 0.9;
+  var SPIN_DECAY = 0.55;
+  var SPIN_DAMAGE_SCALE = 0.01;
+  var SPIN_DAMAGE_CAP = 30;
+  var SPIN_CORE_BONUS = 1.5;
+  var PIERCE_SPEED = 900;
+  var PIERCE_SPIN = 8;
+  var PIERCE_SLOW = 0.82;
+  var PIERCE_MAX = 4;
+  var TIGHT_GAP_MAX = 54;
+  var TIGHT_BONUS = 0.1;
+  var TIGHT_BONUS_CAP = 0.5;
+  var GEAR_DIR_BLEND = 0.25;
+  var WARP_EXIT_BOOST = 1.05;
+
+  var TIMESCALE_WEAK = { scale: 0.25, time: 0.09 };
+  var TIMESCALE_CRIT = { scale: 0.45, time: 0.06 };
+  var TIMESCALE_BOSS = { scale: 0.15, time: 0.6 };
+
+  var FRIEND_CHAIN_WINDOW = 3.0;
+  var FRIEND_CHAIN_STEP = 0.25;
+  var FRIEND_CHAIN_MAX = 3;
+  var SUPPORT_INTERVAL = 2;
+  var REVIVE_HP_RATIO = 0.3;
+  var PARTY_SIZE = 3;
+
+  var PITY_EPIC_START = 10;
+  var PITY_EPIC_STEP = 0.06;
+  var PITY_EPIC_HARD = 24;
+  var PITY_CURSED_START = 26;
+  var PITY_CURSED_STEP = 0.05;
+  var PITY_CURSED_HARD = 60;
+  var FUSE_MAX_OPS = 5;
+  var FUSE_MAX_PLUS = 3;
+  var PURGE_COST = 150;
+  var ITEM_CAP = 90;
+
+  var ROLES = {
+    fire: { key: 'attacker', label: 'アタッカー' },
+    wind: { key: 'support', label: 'サポート' },
+    water: { key: 'mage', label: 'メイジ' },
+    dark: { key: 'tank', label: 'タンク' }
+  };
+  var ROLE_AURA = {
+    attacker: { dmg: 0.15, crit: 0, taken: 1, supportCd: 0 },
+    mage: { dmg: 0, crit: 0.08, taken: 1, supportCd: 0 },
+    support: { dmg: 0, crit: 0, taken: 1, supportCd: -1 },
+    tank: { dmg: 0, crit: 0, taken: 0.8, supportCd: 0 }
+  };
 
   var ELEMENTS = {
     fire: { label: '火', color: '#ff6a3d', glow: 'rgba(255,106,61,.65)', dark: '#7a2408' },
@@ -421,7 +488,7 @@
         { x: 56, y: 402, w: 112, h: 18 }, { x: 312, y: 402, w: 112, h: 18 }
       ],
       barrels: [{ x: 90, y: 300 }, { x: 390, y: 300 }],
-      gears: [{ x: 196, y: 500, w: 88, h: 16, angle: 0 }],
+      gears: [{ x: 196, y: 500, w: 88, h: 16, dir: -90 }],
       warps: [{ x: 44, y: 210 }, { x: 436, y: 210 }]
     },
     {
@@ -430,7 +497,7 @@
         { x: 210, y: 116, w: 60, h: 108 }, { x: 122, y: 296, w: 236, h: 18 }
       ],
       barrels: [{ x: 240, y: 210 }],
-      gears: [{ x: 66, y: 560, w: 100, h: 16, angle: 0 }, { x: 314, y: 560, w: 100, h: 16, angle: 0 }],
+      gears: [{ x: 66, y: 560, w: 100, h: 16, dir: -90 }, { x: 314, y: 560, w: 100, h: 16, dir: -90 }],
       warps: [{ x: 60, y: 120 }, { x: 420, y: 430 }]
     },
     {
@@ -440,7 +507,7 @@
         { x: 188, y: 330, w: 104, h: 18 }
       ],
       barrels: [{ x: 150, y: 150 }, { x: 330, y: 150 }],
-      gears: [{ x: 186, y: 620, w: 108, h: 16, angle: 0 }],
+      gears: [{ x: 186, y: 620, w: 108, h: 16, dir: -90 }],
       warps: [{ x: 300, y: 480 }, { x: 180, y: 480 }]
     },
     {
@@ -450,7 +517,7 @@
         { x: 190, y: 470, w: 100, h: 18 }
       ],
       barrels: [{ x: 240, y: 200 }],
-      gears: [{ x: 60, y: 380, w: 74, h: 16, angle: 0 }, { x: 346, y: 380, w: 74, h: 16, angle: 0 }],
+      gears: [{ x: 60, y: 380, w: 74, h: 16, dir: 0 }, { x: 346, y: 380, w: 74, h: 16, dir: 180 }],
       warps: [{ x: 420, y: 130 }, { x: 60, y: 130 }]
     },
     {
@@ -460,7 +527,7 @@
         { x: 56, y: 116, w: 18, h: 84 }, { x: 406, y: 116, w: 18, h: 84 }
       ],
       barrels: [{ x: 240, y: 360 }, { x: 100, y: 300 }, { x: 380, y: 300 }],
-      gears: [{ x: 196, y: 600, w: 88, h: 16, angle: 0 }],
+      gears: [{ x: 196, y: 600, w: 88, h: 16, dir: -90 }],
       warps: [{ x: 60, y: 470 }, { x: 420, y: 470 }]
     },
     {
@@ -470,7 +537,7 @@
         { x: 108, y: 380, w: 84, h: 18 }, { x: 296, y: 424, w: 84, h: 18 }
       ],
       barrels: [{ x: 240, y: 120 }, { x: 66, y: 300 }],
-      gears: [{ x: 120, y: 540, w: 96, h: 16, angle: 0 }, { x: 264, y: 540, w: 96, h: 16, angle: 0 }],
+      gears: [{ x: 120, y: 540, w: 96, h: 16, dir: -90 }, { x: 264, y: 540, w: 96, h: 16, dir: -90 }],
       warps: [{ x: 430, y: 320 }, { x: 50, y: 600 }]
     }
   ];
@@ -523,7 +590,8 @@
       gold: Math.round(base.gold * stageGoldMul(stageIndex)),
       boss: !!base.boss,
       spawnAnim: 0.45,
-      deathAnim: 0
+      deathAnim: 0,
+      hitCd: 0
     };
   }
 
@@ -542,11 +610,25 @@
   };
 
   function rollRarity(luck, stageIndex) {
+    if (!save.pity) { save.pity = { epic: 0, cursed: 0 }; }
     var rareBoost = luck * LUCK_RARE_PER_POINT + (stageIndex - 1) * 0.012;
-    var cursedRoll = Math.random() - rareBoost * 0.35;
-    if (cursedRoll < 0.045) { return 'cursed'; }
+    var epicPity = save.pity.epic;
+    var cursedPity = save.pity.cursed;
+    var epicBonus = Math.max(0, epicPity - PITY_EPIC_START) * PITY_EPIC_STEP;
+    var cursedBonus = Math.max(0, cursedPity - PITY_CURSED_START) * PITY_CURSED_STEP;
+    var forcedCursed = cursedPity >= PITY_CURSED_HARD;
+    var forcedEpic = epicPity >= PITY_EPIC_HARD;
+    save.pity.epic += 1;
+    save.pity.cursed += 1;
+    if (forcedCursed || (Math.random() - rareBoost * 0.35 - cursedBonus) < 0.045) {
+      save.pity.cursed = 0;
+      return 'cursed';
+    }
+    if (forcedEpic || (Math.random() - rareBoost * 0.5 - epicBonus) < 0.15) {
+      save.pity.epic = 0;
+      return 'epic';
+    }
     var r = Math.random() - rareBoost * 0.5;
-    if (r < 0.15) { return 'epic'; }
     if (r < 0.46) { return 'rare'; }
     return 'normal';
   }
@@ -579,7 +661,9 @@
       slot: slot,
       rarity: rarity,
       name: pick(names),
-      opts: []
+      opts: [],
+      plus: 0,
+      locked: false
     };
     var opCount = RARITIES[rarity].ops;
     if (rarity === 'cursed') {
@@ -603,7 +687,21 @@
   }
 
   function itemSellValue(item) {
-    return RARITIES[item.rarity].sell + item.opts.length * 6;
+    return RARITIES[item.rarity].sell + item.opts.length * 6 + (item.plus || 0) * 25;
+  }
+
+  /* ---- 合成（＋強化）による効果値 ---- */
+  function itemPlusBonus(item, op) {
+    var plus = item.plus || 0;
+    if (plus <= 0) { return 0; }
+    if (op.key === 'atkPct' || op.key === 'critRate' || op.key === 'critDmg') { return plus * 3; }
+    if (op.key === 'maxHpPlus') { return plus * 6; }
+    if (op.key === 'reflectPlus' || op.key === 'shotPlus') { return plus >= 2 ? 1 : 0; }
+    return 0;
+  }
+
+  function itemOptionValue(item, op) {
+    return op.value + itemPlusBonus(item, op);
   }
 
   function equipTotals() {
@@ -616,12 +714,13 @@
       if (!item) { return; }
       item.opts.forEach(function (op) {
         if (op.key === 'curseDouble') { total.dmgTakenMult *= 2; total.curses += 1; return; }
-        if (op.key === 'atkPct') { total.atkPct += op.value / 100; return; }
-        if (op.key === 'critRate') { total.critRate += op.value / 100; return; }
-        if (op.key === 'critDmg') { total.critDmg += op.value / 100; return; }
-        if (op.key === 'reflectPlus') { total.reflectPlus += op.value; return; }
-        if (op.key === 'maxHpPlus') { total.maxHpPlus += op.value; return; }
-        if (op.key === 'shotPlus') { total.shotPlus += op.value; }
+        var value = itemOptionValue(item, op);
+        if (op.key === 'atkPct') { total.atkPct += value / 100; return; }
+        if (op.key === 'critRate') { total.critRate += value / 100; return; }
+        if (op.key === 'critDmg') { total.critDmg += value / 100; return; }
+        if (op.key === 'reflectPlus') { total.reflectPlus += value; return; }
+        if (op.key === 'maxHpPlus') { total.maxHpPlus += value; return; }
+        if (op.key === 'shotPlus') { total.shotPlus += value; }
       });
     });
     return total;
@@ -658,6 +757,175 @@
     return true;
   }
 
+  /* ---- 合成 / 浄化 / ロック / 自動売却 ---- */
+  function findFusePartner(item) {
+    for (var i = 0; i < save.items.length; i += 1) {
+      var other = save.items[i];
+      if (other.uid === item.uid) { continue; }
+      if (other.name === item.name && other.rarity === item.rarity && other.slot === item.slot) {
+        return other;
+      }
+    }
+    return null;
+  }
+
+  function itemHasCurse(item) {
+    for (var i = 0; i < item.opts.length; i += 1) {
+      if (item.opts[i].curse) { return true; }
+    }
+    return false;
+  }
+
+  function fuseItems(uid) {
+    var item = findItem(uid);
+    if (!item) { return false; }
+    if (item.locked) {
+      showToast('ロック中の装備は合成できません', '✕', 'warn');
+      return false;
+    }
+    var partner = findFusePartner(item);
+    if (!partner) {
+      showToast('同名＋同レアの装備が必要です', '✕', 'warn');
+      return false;
+    }
+    save.items = save.items.filter(function (it) { return it.uid !== partner.uid; });
+    Object.keys(save.equip).forEach(function (slot) {
+      if (save.equip[slot] === partner.uid) { save.equip[slot] = item.uid; }
+    });
+    var resultText = '';
+    if (item.opts.length < FUSE_MAX_OPS) {
+      var pool = shuffle(['atkPct', 'critRate', 'critDmg', 'reflectPlus', 'maxHpPlus']);
+      var existing = {};
+      for (var i = 0; i < item.opts.length; i += 1) { existing[item.opts[i].key] = true; }
+      for (var p = 0; p < pool.length; p += 1) {
+        if (existing[pool[p]]) { continue; }
+        var op = rollOption(item.rarity, pool[p]);
+        if (!op) { continue; }
+        item.opts.push(op);
+        resultText = '新オプション『' + op.label + '』を獲得';
+        break;
+      }
+    }
+    if (!resultText) {
+      item.plus = Math.min(FUSE_MAX_PLUS, (item.plus || 0) + 1);
+      resultText = '強化値 ＋' + item.plus + ' に上昇';
+    }
+    Sfx.evolution();
+    flashScreen('flash--evolve');
+    showToast('合成成功：' + resultText, '★', 'synergy');
+    persistSave();
+    if (state && state.player) {
+      recomputePlayer(false);
+      updateHud();
+    }
+    return true;
+  }
+
+  function purgeItem(uid) {
+    var item = findItem(uid);
+    if (!item) { return false; }
+    if (!itemHasCurse(item)) {
+      showToast('この装備に呪いはありません', '✕', 'warn');
+      return false;
+    }
+    if (save.gold < PURGE_COST) {
+      showToast('ゴールドが足りません（' + PURGE_COST + 'G 必要）', '✕', 'warn');
+      return false;
+    }
+    save.gold -= PURGE_COST;
+    item.opts = item.opts.filter(function (op) { return !op.curse; });
+    Sfx.fanfare();
+    flashScreen('flash--friend');
+    showToast('呪いを浄化しました（-' + PURGE_COST + 'G）', '◇', 'luck');
+    persistSave();
+    if (state && state.player) {
+      recomputePlayer(false);
+      updateHud();
+    }
+    return true;
+  }
+
+  function toggleItemLock(uid) {
+    var item = findItem(uid);
+    if (!item) { return false; }
+    item.locked = !item.locked;
+    Sfx.ui();
+    showToast(item.locked ? 'ロックしました（売却・合成から保護）' : 'ロックを解除しました',
+      item.locked ? '●' : '○', '');
+    persistSave();
+    return true;
+  }
+
+  /* ---- 在庫上限（装備中・ロック中・高レアは保護して整理） ---- */
+  function trimInventory() {
+    if (save.items.length <= ITEM_CAP) { return; }
+    var keep = [];
+    var removable = [];
+    for (var i = 0; i < save.items.length; i += 1) {
+      var item = save.items[i];
+      var equipped = (save.equip[item.slot] === item.uid);
+      var safe = equipped || item.locked || item.rarity === 'epic' || item.rarity === 'cursed';
+      if (safe) { keep.push(item); } else { removable.push(item); }
+    }
+    while (keep.length < ITEM_CAP && removable.length > 0) {
+      keep.push(removable.shift());
+    }
+    while (keep.length > ITEM_CAP) {
+      keep.shift();
+    }
+    save.items = keep;
+  }
+
+  function autoSellItems() {
+    var keep = [];
+    var sold = 0;
+    var value = 0;
+    for (var i = 0; i < save.items.length; i += 1) {
+      var item = save.items[i];
+      var equipped = (save.equip[item.slot] === item.uid);
+      var trash = (item.rarity === 'normal' || item.rarity === 'rare') && !equipped && !item.locked;
+      if (trash) {
+        sold += 1;
+        value += itemSellValue(item);
+      } else {
+        keep.push(item);
+      }
+    }
+    if (sold === 0) {
+      showToast('売却対象がありません（装備中・ロック中は保護）', '✕', 'warn');
+      return 0;
+    }
+    save.items = keep;
+    save.gold += value;
+    Sfx.coin();
+    showToast('自動売却: ' + sold + '個 → +' + value + 'G', '＋', 'gold');
+    persistSave();
+    return sold;
+  }
+
+  function compareItems(item) {
+    var current = getEquippedItem(item.slot);
+    if (!current) { return SLOT_LABEL[item.slot] + '未装備 → そのまま装備できます'; }
+    if (current.uid === item.uid) { return '現在装備中'; }
+    var parts = [];
+    for (var i = 0; i < item.opts.length; i += 1) {
+      var op = item.opts[i];
+      if (op.curse) {
+        parts.push('呪い付き');
+        continue;
+      }
+      var best = 0;
+      for (var j = 0; j < current.opts.length; j += 1) {
+        if (current.opts[j].key === op.key && !current.opts[j].curse) {
+          best = Math.max(best, itemOptionValue(current, current.opts[j]));
+        }
+      }
+      var delta = Math.round((itemOptionValue(item, op) - best) * 10) / 10;
+      parts.push(op.key + ' ' + (delta >= 0 ? '+' : '') + delta);
+    }
+    return '比較 → ' + parts.join(' / ');
+  }
+
   function sellItem(uid) {
     var item = findItem(uid);
     if (!item) { return 0; }
@@ -674,7 +942,7 @@
   /* ---- セーブデータ ---- */
   function createDefaultSave() {
     return {
-      version: 1,
+      version: 2,
       gold: 0,
       bestStageIndex: 1,
       chars: { fire: { star: 3, luck: 0 } },
@@ -683,7 +951,9 @@
       selectedCharId: 'fire',
       soundEnabled: true,
       runs: 0,
-      clearedStages: 0
+      clearedStages: 0,
+      party: { main: 'fire', subs: [] },
+      pity: { epic: 0, cursed: 0 }
     };
   }
 
@@ -733,7 +1003,9 @@
               value: Number(op.value) || 0,
               curse: !!op.curse
             };
-          }) : []
+          }) : [],
+          plus: clamp(Math.floor(Number(it.plus) || 0), 0, FUSE_MAX_PLUS),
+          locked: !!it.locked
         };
       });
     }
@@ -751,6 +1023,28 @@
 
     if (typeof raw.selectedCharId === 'string' && out.chars[raw.selectedCharId]) {
       out.selectedCharId = raw.selectedCharId;
+    }
+
+    out.party = { main: out.selectedCharId, subs: [] };
+    if (raw.party && typeof raw.party === 'object') {
+      if (typeof raw.party.main === 'string' && out.chars[raw.party.main]) {
+        out.party.main = raw.party.main;
+      }
+      if (Array.isArray(raw.party.subs)) {
+        for (var si = 0; si < raw.party.subs.length && out.party.subs.length < PARTY_SIZE - 1; si += 1) {
+          var sid = raw.party.subs[si];
+          if (typeof sid === 'string' && out.chars[sid] && sid !== out.party.main &&
+            out.party.subs.indexOf(sid) < 0) {
+            out.party.subs.push(sid);
+          }
+        }
+      }
+    }
+    if (raw.pity && typeof raw.pity === 'object') {
+      out.pity = {
+        epic: clamp(Math.floor(Number(raw.pity.epic) || 0), 0, 999),
+        cursed: clamp(Math.floor(Number(raw.pity.cursed) || 0), 0, 999)
+      };
     }
     return out;
   }
@@ -1021,15 +1315,31 @@
       particles: [],
       texts: [],
       friends: [],
-      ball: { x: LAUNCH_X, y: LAUNCH_Y, vx: 0, vy: 0, trail: [], alive: false, bounce: 0, maxBounce: 4, spin: 0, life: 0 },
+      ball: { x: LAUNCH_X, y: LAUNCH_Y, vx: 0, vy: 0, trail: [], alive: false, bounce: 0, maxBounce: 4, spin: 0, life: 0, omega: 0, pierce: 0, tightBonus: 0 },
       player: null,
       combo: 0,
       comboTimer: 0,
       hitStop: 0,
+      timeScale: 1,
+      timeScaleTimer: 0,
       shakeTimer: 0,
       shakeHard: false,
-      aim: { active: false, pointerX: LAUNCH_X, pointerY: LAUNCH_Y, power: 0, dirX: 0, dirY: -1 },
+      aim: {
+        active: false, pointerX: LAUNCH_X, pointerY: LAUNCH_Y, originX: LAUNCH_X, originY: LAUNCH_Y,
+        power: 0, dirX: 0, dirY: -1, locked: false, lockedPower: 0, lastMove: 0, flick: 0,
+        assist: false, samples: [], ghost: null
+      },
       pointerId: null,
+      pointers: {},
+      friendChain: 0,
+      friendChainTimer: 0,
+      duoMembers: {},
+      duoFired: false,
+      partyRevives: 0,
+      partyDowned: [],
+      carryShots: 0,
+      supportCounter: 0,
+      lockNotified: false,
       time: 0,
       enemyTurnTimer: 0,
       warpCooldown: 0,
@@ -1078,7 +1388,14 @@
       berserk: false,
       shotsPerWave: BASE_SHOTS,
       shotsLeft: BASE_SHOTS,
-      burstUsed: false
+      burstUsed: false,
+      partyMembers: [],
+      partyDown: [],
+      auraDmg: 1,
+      auraCrit: 0,
+      auraTaken: 1,
+      auraSupportCd: 0,
+      friendRevive: 0
     };
   }
 
@@ -1094,6 +1411,64 @@
       dmgTakenMult: eq.dmgTakenMult,
       reflectPlus: eq.reflectPlus
     };
+  }
+
+  /* ---- パーティ（メイン＋サブ2） ---- */
+  function partySubIds() {
+    var subs = (save.party && save.party.subs) ? save.party.subs : [];
+    var out = [];
+    for (var i = 0; i < subs.length && out.length < PARTY_SIZE - 1; i += 1) {
+      if (subs[i] && save.chars[subs[i]] && out.indexOf(subs[i]) < 0) { out.push(subs[i]); }
+    }
+    return out;
+  }
+
+  function buildPartyMembers(charId, star) {
+    var p = state.player;
+    var mainId = charId || (p ? p.charId : save.selectedCharId);
+    var mainStar = star || (save.chars[mainId] ? save.chars[mainId].star : 3);
+    var ids = [mainId].concat(partySubIds());
+    var members = [];
+    for (var i = 0; i < ids.length; i += 1) {
+      var id = ids[i];
+      var entry = save.chars[id] || { star: 3, luck: 0 };
+      var def = getCharDef(id);
+      var ev = getEvolution(id, entry.star);
+      members.push({
+        charId: id,
+        star: entry.star,
+        name: ev.name,
+        glyph: ev.glyph,
+        element: def.element,
+        friend: ev.friend,
+        role: ROLES[id] || ROLES.fire,
+        isMain: i === 0
+      });
+    }
+    return members;
+  }
+
+  function partyAuras(members) {
+    var aura = { dmg: 1, crit: 0, taken: 1, supportCd: 0 };
+    for (var i = 1; i < members.length; i += 1) {
+      var def = ROLE_AURA[members[i].role.key] || ROLE_AURA.attacker;
+      aura.dmg += def.dmg;
+      aura.crit += def.crit;
+      aura.taken *= def.taken;
+      aura.supportCd += def.supportCd;
+    }
+    return aura;
+  }
+
+  function partyAuraSummary() {
+    var p = state.player;
+    if (!p || !p.partyMembers || p.partyMembers.length < 2) { return 'なし'; }
+    var parts = [];
+    for (var i = 1; i < p.partyMembers.length; i += 1) {
+      var m = p.partyMembers[i];
+      parts.push(m.name + '（' + m.role.label + '）');
+    }
+    return parts.join(' / ');
   }
 
   function recomputePlayer(fullHeal) {
@@ -1113,13 +1488,20 @@
     p.name = ev.name;
     p.element = def.element;
     p.friend = ev.friend;
+    p.partyMembers = buildPartyMembers(p.charId, p.star);
+    var aura = partyAuras(p.partyMembers);
+    p.auraDmg = aura.dmg;
+    p.auraCrit = aura.crit;
+    p.auraTaken = aura.taken;
+    p.auraSupportCd = aura.supportCd;
+    p.friendRevive = aura.supportCd < 0 ? 1 : 0;
     var atkMul = 1 + eq.atkPct + st.atkPct;
     if (syn.flags.berserker_pact) { atkMul *= 2; }
-    p.atk = ev.atk * atkMul;
+    p.atk = ev.atk * atkMul * aura.dmg;
     p.maxHp = Math.round(ev.hp + eq.maxHpPlus + st.maxHp);
-    p.critRate = clamp(ev.critRate + eq.critRate + st.critRate, 0, 0.95);
+    p.critRate = clamp(ev.critRate + eq.critRate + st.critRate + aura.crit, 0, 0.95);
     p.critDmg = ev.critDmg + eq.critDmg + st.critDmg;
-    p.dmgTakenMult = eq.dmgTakenMult * (1 - clamp(st.dmgReduce, 0, 0.6));
+    p.dmgTakenMult = eq.dmgTakenMult * (1 - clamp(st.dmgReduce, 0, 0.6)) * aura.taken;
     p.reflectPlus = eq.reflectPlus + st.reflectPlus;
     p.speedMul = 1 + st.speedPct;
     p.weakBonus = st.weakBonus;
@@ -1159,7 +1541,11 @@
       return { x: b.x, y: b.y, r: 14, hp: 3, maxHp: 3, alive: true, hitFlash: 0, spawn: 1 };
     });
     state.gears = pattern.gears.map(function (g) {
-      return { x: g.x, y: g.y, w: g.w, h: g.h, glow: 0, occupied: false };
+      var dirDeg = (g.dir === undefined) ? -90 : g.dir;
+      return {
+        x: g.x, y: g.y, w: g.w, h: g.h, glow: 0, occupied: false, cooldown: 0,
+        dir: dirDeg, dirRad: dirDeg * Math.PI / 180
+      };
     });
     state.warps = pattern.warps.map(function (w, i) {
       return { x: w.x, y: w.y, r: 17, index: i, pulse: 0 };
@@ -1242,12 +1628,17 @@
 
   function buildFriends() {
     var p = state.player;
-    var count = Math.max(1, p.friend.count);
+    var members = (p.partyMembers && p.partyMembers.length > 0)
+      ? p.partyMembers
+      : [{ charId: p.charId, name: p.name, glyph: p.glyph, element: p.element, friend: p.friend, isMain: true }];
+    var count = Math.max(members.length, p.friend.count);
     var list = [];
     var y = FIELD.y + FIELD.h - 46;
     for (var i = 0; i < count; i += 1) {
       var t = count === 1 ? 0.5 : i / (count - 1);
       var x = lerp(FIELD.x + 52, FIELD.x + FIELD.w - 52, t);
+      var ownerIndex = i % members.length;
+      var owner = members[ownerIndex];
       list.push({
         id: 'friend-' + i,
         x: x,
@@ -1255,7 +1646,12 @@
         r: 11,
         used: false,
         pulse: 0,
-        type: p.friend.type
+        type: owner.friend.type,
+        friend: owner.friend,
+        ownerIndex: ownerIndex,
+        ownerName: owner.name,
+        element: owner.element,
+        color: ELEMENTS[owner.element].color
       });
     }
     state.friends = list;
@@ -1373,6 +1769,7 @@
       addShockwave(enemy.x, enemy.y, 150, '#ff2d55');
       flashScreen('flash--burst');
       shakeScreen(true);
+      applyTimeScale(TIMESCALE_BOSS);
     }
     var gold = playerGoldGain(enemy.gold);
     save.gold += gold;
@@ -1407,8 +1804,36 @@
     Sfx.damage();
     updateHud();
     if (p.hp <= 0) {
-      endRun('defeat');
+      if (!tryPartyRevive()) {
+        endRun('defeat');
+      }
     }
+  }
+
+  /* ---- 控えメンバーによる蘇生（1ステージで最大人数-1回） ---- */
+  function tryPartyRevive() {
+    var p = state.player;
+    if (!p.partyMembers || p.partyMembers.length < 2) { return false; }
+    if (state.partyDowned.length >= p.partyMembers.length - 1) { return false; }
+    var idx = 1 + state.partyDowned.length;
+    var member = p.partyMembers[idx];
+    if (!member) { return false; }
+    state.partyDowned.push(member.charId);
+    if (!p.partyDown) { p.partyDown = []; }
+    p.partyDown.push(member.charId);
+    p.hp = Math.round(p.maxHp * REVIVE_HP_RATIO);
+    applyTimeScale(TIMESCALE_BOSS);
+    flashScreen('flash--evolve');
+    shakeScreen(true);
+    Sfx.fanfare();
+    showBanner('控えが復活！', member.name + ' が身代わりになった', 'friend');
+    showToast('サブ『' + member.name + '』が身代わりに → HP ' + p.hp + ' で復活', '＋', 'luck');
+    for (var i = 0; i < state.friends.length; i += 1) {
+      if (state.friends[i].ownerIndex === idx) { state.friends[i].used = true; }
+    }
+    renderPartyPips();
+    updateHud();
+    return true;
   }
 
   function healPlayer(amount, showText) {
@@ -1446,6 +1871,67 @@
     return 1 + 0.08 * state.ball.bounce;
   }
 
+  /* ---- Battle Core 2.0 物理コア ---- */
+  function ballSpeed() {
+    var b = state.ball;
+    return Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+  }
+
+  function pointInsideAnySolid(x, y) {
+    if (x < FIELD.x || x > FIELD.x + FIELD.w || y < FIELD.y || y > FIELD.y + FIELD.h) { return true; }
+    var i;
+    for (i = 0; i < state.obstacles.length; i += 1) {
+      var o = state.obstacles[i];
+      if (x > o.x && x < o.x + o.w && y > o.y && y < o.y + o.h) { return true; }
+    }
+    for (i = 0; i < state.barrels.length; i += 1) {
+      var bl = state.barrels[i];
+      if (bl.alive && dist(x, y, bl.x, bl.y) < bl.r) { return true; }
+    }
+    return false;
+  }
+
+  function tightGapCheck(x, y, nx, ny) {
+    var px = x + nx * BALL_RADIUS;
+    var py = y + ny * BALL_RADIUS;
+    for (var step = 2; step <= TIGHT_GAP_MAX; step += 2) {
+      if (pointInsideAnySolid(px + nx * step, py + ny * step)) { return true; }
+    }
+    return false;
+  }
+
+  function resolveCollision(nx, ny, material, hitX, hitY) {
+    var b = state.ball;
+    var mat = material || MATERIALS.wall;
+    var vn = b.vx * nx + b.vy * ny;
+    var tx = -ny;
+    var ty = nx;
+    var vt = b.vx * tx + b.vy * ty;
+    var newVn = -vn * mat.restitution;
+    var newVt = vt * (1 - mat.friction);
+    b.vx = nx * newVn + tx * newVt;
+    b.vy = ny * newVn + ty * newVt;
+    b.omega = clamp(b.omega + vt * mat.spin - b.omega * mat.spin * 0.5, -40, 40);
+    return {
+      normalSpeed: Math.abs(vn),
+      tangentSpeed: vt,
+      tight: tightGapCheck(hitX, hitY, nx, ny)
+    };
+  }
+
+  function spinDamageMultiplier() {
+    return 1 + Math.min(Math.abs(state.ball.omega), SPIN_DAMAGE_CAP) * SPIN_DAMAGE_SCALE;
+  }
+
+  function tightDamageMultiplier() {
+    return 1 + clamp(state.ball.tightBonus, 0, TIGHT_BONUS_CAP);
+  }
+
+  function applyTimeScale(profile) {
+    state.timeScale = profile.scale;
+    state.timeScaleTimer = profile.time;
+  }
+
   function nearestEnemy(x, y, exceptBoss) {
     var best = null;
     var bestD = Infinity;
@@ -1470,12 +1956,29 @@
     b.alive = true;
     b.bounce = 0;
     b.life = 0;
+    b.omega = clamp(dirX * -4 + 6, -10, 14) * (0.5 + power);
+    b.pierce = 0;
+    b.tightBonus = 0;
     b.trail.length = 0;
     p.burstUsed = false;
+    state.timeScale = 1;
+    state.timeScaleTimer = 0;
     state.phase = 'moving';
     p.shotsLeft = Math.max(0, p.shotsLeft - 1);
     state.lastShotIndex += 1;
     resetCombo();
+    state.friendChain = 0;
+    state.friendChainTimer = 0;
+    state.duoMembers = {};
+    state.duoFired = false;
+    if (p.friendRevive > 0) {
+      for (var fi = 0; fi < state.friends.length; fi += 1) {
+        if (state.friends[fi].used && Math.random() < 0.5) {
+          state.friends[fi].used = false;
+          state.friends[fi].pulse = 0.5;
+        }
+      }
+    }
     if (p.berserk) {
       var cost = Math.min(Math.round(p.hp * BERSERKER_HP_COST), Math.max(0, p.hp - 1));
       if (cost > 0) {
@@ -1485,14 +1988,69 @@
     }
     Sfx.launch();
     addRing(b.x, b.y, 26, ELEMENTS[p.element].color, 0.3, 2);
+    fireSupportVolley();
     updateHud();
   }
 
-  function onWallBounce(hitX, hitY) {
+  /* ---- サブの自律援護（ターン経過で自動発動） ---- */
+  function fireSupportVolley() {
+    var p = state.player;
+    if (!p.partyMembers || p.partyMembers.length < 2) { return; }
+    var interval = SUPPORT_INTERVAL + p.auraSupportCd;
+    if (interval < 1) { interval = 1; }
+    state.supportCounter += 1;
+    if (state.supportCounter % interval !== 0) { return; }
+    for (var i = 1; i < p.partyMembers.length; i += 1) {
+      var m = p.partyMembers[i];
+      if (p.partyDown && p.partyDown.indexOf(m.charId) >= 0) { continue; }
+      var target = weakestEnemy();
+      if (!target) { continue; }
+      var el = ELEMENTS[m.element];
+      var color = el.color;
+      state.missiles.push({
+        x: LAUNCH_X + (i === 1 ? -18 : 18),
+        y: LAUNCH_Y - 8,
+        vx: 0,
+        vy: -260,
+        dmg: p.atk * 0.45 * m.friend.dmgMul,
+        color: color,
+        life: 4.2,
+        target: target,
+        trail: [],
+        support: true
+      });
+      addText(LAUNCH_X + (i === 1 ? -18 : 18), LAUNCH_Y - 30, '援護!', color, 11, false);
+      addParticles(LAUNCH_X + (i === 1 ? -18 : 18), LAUNCH_Y - 10, 8, color, 130, 2.2);
+    }
+    Sfx.friend();
+  }
+
+  function weakestEnemy() {
+    var best = null;
+    var bestHp = Infinity;
+    for (var i = 0; i < state.enemies.length; i += 1) {
+      var e = state.enemies[i];
+      if (!e.alive) { continue; }
+      if (!best || e.hp < bestHp) {
+        best = e;
+        bestHp = e.hp;
+      }
+    }
+    return best;
+  }
+
+  function onWallBounce(hitX, hitY, tight) {
     var b = state.ball;
     var p = state.player;
     var speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
     b.bounce = Math.min(b.bounce + 1, b.maxBounce);
+    if (tight) {
+      b.tightBonus = clamp(b.tightBonus + TIGHT_BONUS, 0, TIGHT_BONUS_CAP);
+      addCombo(2);
+      addText(hitX, hitY - 20, 'カンカン!', '#ffe45c', 12, true);
+      addRing(hitX, hitY, 24, '#ffe45c', 0.26, 2);
+      flashScreen('flash--crit');
+    }
     if (speed > COMBO_SPEED_MIN) {
       addCombo(1 + p.comboBonus);
     }
@@ -1522,26 +2080,27 @@
   function collideWalls() {
     var b = state.ball;
     var didBounce = false;
+    var res = null;
     if (b.x - BALL_RADIUS < FIELD.x) {
       b.x = FIELD.x + BALL_RADIUS;
-      b.vx = Math.abs(b.vx) * WALL_RESTITUTION;
+      res = resolveCollision(1, 0, MATERIALS.wall, FIELD.x, b.y);
       didBounce = true;
     } else if (b.x + BALL_RADIUS > FIELD.x + FIELD.w) {
       b.x = FIELD.x + FIELD.w - BALL_RADIUS;
-      b.vx = -Math.abs(b.vx) * WALL_RESTITUTION;
+      res = resolveCollision(-1, 0, MATERIALS.wall, FIELD.x + FIELD.w, b.y);
       didBounce = true;
     }
     if (b.y - BALL_RADIUS < FIELD.y) {
       b.y = FIELD.y + BALL_RADIUS;
-      b.vy = Math.abs(b.vy) * WALL_RESTITUTION;
+      res = resolveCollision(0, 1, MATERIALS.wall, b.x, FIELD.y);
       didBounce = true;
     } else if (b.y + BALL_RADIUS > FIELD.y + FIELD.h) {
       b.y = FIELD.y + FIELD.h - BALL_RADIUS;
-      b.vy = -Math.abs(b.vy) * WALL_RESTITUTION;
+      res = resolveCollision(0, -1, MATERIALS.wall, b.x, FIELD.y + FIELD.h);
       didBounce = true;
     }
     if (didBounce) {
-      onWallBounce(b.x, b.y);
+      onWallBounce(b.x, b.y, res ? res.tight : false);
       return true;
     }
     return false;
@@ -1576,11 +2135,9 @@
         b.x = cx + nx * BALL_RADIUS;
         b.y = cy + ny * BALL_RADIUS;
       }
-      var dot = b.vx * nx + b.vy * ny;
-      b.vx = (b.vx - 2 * dot * nx) * OBSTACLE_RESTITUTION;
-      b.vy = (b.vy - 2 * dot * ny) * OBSTACLE_RESTITUTION;
       o.flash = 0.2;
-      onWallBounce(cx, cy);
+      var oRes = resolveCollision(nx, ny, MATERIALS.obstacle, cx, cy);
+      onWallBounce(cx, cy, oRes.tight);
       hit = true;
     }
     return hit;
@@ -1637,9 +2194,7 @@
       var ny = (b.y - barrel.y) / (d || 1);
       b.x = barrel.x + nx * minD;
       b.y = barrel.y + ny * minD;
-      var dot = b.vx * nx + b.vy * ny;
-      b.vx = (b.vx - 2 * dot * nx) * OBSTACLE_RESTITUTION;
-      b.vy = (b.vy - 2 * dot * ny) * OBSTACLE_RESTITUTION;
+      resolveCollision(nx, ny, MATERIALS.barrel, b.x, b.y);
       barrel.hp -= 1;
       barrel.hitFlash = 0.2;
       addParticles(barrel.x, barrel.y, 6, '#ffcf9a', 140, 2.4);
@@ -1659,9 +2214,10 @@
     var p = state.player;
     var speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
     var crit = Math.random() < p.critRate;
-    var damage = p.atk * comboMultiplier() * bounceMultiplier();
+    var damage = p.atk * comboMultiplier() * bounceMultiplier() * spinDamageMultiplier() * tightDamageMultiplier();
     if (weak) { damage *= 3 * (1 + p.weakBonus); }
     if (crit) { damage *= p.critDmg; }
+    if (b.pierce > 0) { damage *= 1 + 0.1 * b.pierce; }
     var options = {
       color: crit ? '#ffe45c' : (weak ? '#47d9ff' : '#ffffff'),
       weak: weak,
@@ -1684,12 +2240,14 @@
     }
     if (weak) {
       state.hitStop = Math.max(state.hitStop, HITSTOP_WEAK);
+      applyTimeScale(TIMESCALE_WEAK);
       shakeScreen(false);
       Sfx.weak();
       addText(b.x, b.y - 30, 'WEAK!', '#47d9ff', 15, true);
       flashScreen('flash--crit');
     } else if (crit) {
       state.hitStop = Math.max(state.hitStop, HITSTOP_CRIT);
+      applyTimeScale(TIMESCALE_CRIT);
       Sfx.crit();
       flashScreen('flash--crit');
     } else {
@@ -1709,19 +2267,34 @@
     var hit = false;
     for (var i = 0; i < state.enemies.length; i += 1) {
       var e = state.enemies[i];
-      if (!e.alive) { continue; }
+      if (!e.alive || e.hitCd > 0) { continue; }
       var d = dist(b.x, b.y, e.x, e.y);
       var minD = BALL_RADIUS + e.radius;
       if (d >= minD) { continue; }
       var nx = (b.x - e.x) / (d || 1);
       var ny = (b.y - e.y) / (d || 1);
-      b.x = e.x + nx * minD;
-      b.y = e.y + ny * minD;
-      var dot = b.vx * nx + b.vy * ny;
-      b.vx = (b.vx - 2 * dot * nx) * ENEMY_RESTITUTION;
-      b.vy = (b.vy - 2 * dot * ny) * ENEMY_RESTITUTION;
       var core = corePosition(e);
-      var weak = dist(b.x, b.y, core.x, core.y) <= CORE_RADIUS + BALL_RADIUS;
+      var coreReach = CORE_RADIUS + BALL_RADIUS + (Math.abs(b.omega) > 12 ? SPIN_CORE_BONUS : 0);
+      var speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+      var weak = dist(b.x, b.y, core.x, core.y) <= coreReach;
+      var canPierce = speed >= PIERCE_SPEED && Math.abs(b.omega) >= PIERCE_SPIN && b.pierce < PIERCE_MAX;
+      if (canPierce) {
+        b.pierce += 1;
+        b.vx *= PIERCE_SLOW;
+        b.vy *= PIERCE_SLOW;
+        b.omega *= 0.7;
+        e.hitCd = 0.14;
+        addCombo(2);
+        addText(b.x, b.y - 26, '貫通 x' + b.pierce, '#b478ff', 13, true);
+        addParticles(b.x, b.y, 10, '#b478ff', 200, 2.6);
+        addRing(b.x, b.y, 30, '#b478ff', 0.3, 3);
+        Sfx.crit();
+      } else {
+        b.x = e.x + nx * minD;
+        b.y = e.y + ny * minD;
+        e.hitCd = 0.06;
+        resolveCollision(nx, ny, MATERIALS.enemy, e.x + nx * e.radius, e.y + ny * e.radius);
+      }
       hitEnemyBody(e, weak);
       hit = true;
     }
@@ -1733,12 +2306,20 @@
     for (var i = 0; i < state.friends.length; i += 1) {
       var f = state.friends[i];
       if (f.used) { continue; }
+      if (isFriendOwnerDown(f)) { continue; }
       if (dist(b.x, b.y, f.x, f.y) <= BALL_RADIUS + f.r) {
         f.used = true;
         f.pulse = 0.6;
         triggerFriendCombo(f);
       }
     }
+  }
+
+  function isFriendOwnerDown(f) {
+    var p = state.player;
+    if (!p || !p.partyDown || f.ownerIndex === undefined || f.ownerIndex === 0) { return false; }
+    if (!p.partyMembers || !p.partyMembers[f.ownerIndex]) { return false; }
+    return p.partyDown.indexOf(p.partyMembers[f.ownerIndex].charId) >= 0;
   }
 
   function checkGears() {
@@ -1758,6 +2339,13 @@
           b.vy *= GEAR_BOOST;
         }
         var sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+        if (sp > 1) {
+          var dvx = Math.cos(g.dirRad) * sp;
+          var dvy = Math.sin(g.dirRad) * sp;
+          b.vx = lerp(b.vx, dvx, GEAR_DIR_BLEND);
+          b.vy = lerp(b.vy, dvy, GEAR_DIR_BLEND);
+        }
+        sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
         if (sp > MAX_SPEED) {
           var k = MAX_SPEED / sp;
           b.vx *= k;
@@ -1792,6 +2380,8 @@
       }
       b.x = clamp(b.x, FIELD.x + BALL_RADIUS, FIELD.x + FIELD.w - BALL_RADIUS);
       b.y = clamp(b.y, FIELD.y + BALL_RADIUS, FIELD.y + FIELD.h - BALL_RADIUS);
+      b.vx *= WARP_EXIT_BOOST;
+      b.vy *= WARP_EXIT_BOOST;
       state.warpCooldown = 0.35;
       w.pulse = 0.6;
       other.pulse = 0.6;
@@ -1825,10 +2415,26 @@
       checkWarps();
       if (b.vx === 0 && b.vy === 0) { break; }
     }
-    var drag = Math.pow(AIR_DRAG, dt * 60);
-    b.vx *= drag;
-    b.vy *= drag;
-    b.spin += dt * 8;
+    /* マグヌス効果（回転による弾道の曲がり） */
+    var sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+    if (sp > 1 && Math.abs(b.omega) > 0.5) {
+      var magAcc = b.omega * MAGNUS_K;
+      var perpX = -b.vy / sp;
+      var perpY = b.vx / sp;
+      b.vx += perpX * magAcc * dt;
+      b.vy += perpY * magAcc * dt;
+    }
+    /* 速度比例＋二乗抗力（低速は伸び、高速は速やかに減衰） */
+    sp = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+    if (sp > 0.0001) {
+      var decel = (LINEAR_DRAG * sp + QUAD_DRAG * sp * sp) * dt;
+      var nextSp = Math.max(0, sp - decel);
+      var scale = nextSp / sp;
+      b.vx *= scale;
+      b.vy *= scale;
+    }
+    b.omega *= Math.pow(0.5, dt * SPIN_DECAY);
+    b.spin += (8 + b.omega * 0.4) * dt;
     b.life += dt;
     b.trail.push({ x: b.x, y: b.y, life: 0.34 });
     if (b.trail.length > 26) { b.trail.shift(); }
@@ -1879,13 +2485,23 @@
 
   function triggerFriendCombo(friend) {
     var p = state.player;
-    var fr = p.friend;
-    var el = ELEMENTS[p.element];
-    var baseDamage = p.atk * fr.dmgMul;
+    var fr = friend.friend || p.friend;
+    var el = ELEMENTS[friend.element || p.element];
+    var chainBonus = 1 + state.friendChain * FRIEND_CHAIN_STEP;
+    var baseDamage = p.atk * fr.dmgMul * chainBonus;
     Sfx.friend();
     flashScreen('flash--friend');
-    showBanner('友情コンボ', FRIEND_LABEL[fr.type] || '連携攻撃', 'friend');
-    showToast('友情コンボ『' + (FRIEND_LABEL[fr.type] || '連携攻撃') + '』発動！', '◎', 'synergy');
+    if (state.friendChain > 0) {
+      showBanner('フレンドチェーン x' + (state.friendChain + 1), FRIEND_LABEL[fr.type] || '連携攻撃', 'friend');
+    } else {
+      showBanner('友情コンボ', (friend.ownerName ? friend.ownerName + ' / ' : '') + (FRIEND_LABEL[fr.type] || '連携攻撃'), 'friend');
+    }
+    showToast('友情コンボ『' + (FRIEND_LABEL[fr.type] || '連携攻撃') + '』' +
+      (state.friendChain > 0 ? '（チェーン x' + (state.friendChain + 1) + '）' : '') + ' 発動！', '◎', 'synergy');
+    state.friendChain = Math.min(state.friendChain + 1, FRIEND_CHAIN_MAX);
+    state.friendChainTimer = FRIEND_CHAIN_WINDOW;
+    state.duoMembers['m' + friend.ownerIndex] = true;
+    checkDuoSkill();
     addRing(friend.x, friend.y, 46, el.color, 0.4, 3);
     addParticles(friend.x, friend.y, 22, el.color, 220, 2.8);
     var i;
@@ -1938,6 +2554,36 @@
         addText(friend.x, friend.y + 26, 'HP回復', '#6ef08a', 12, false);
       }
     }
+  }
+
+  function checkDuoSkill() {
+    var p = state.player;
+    if (state.duoFired) { return; }
+    var need = p.partyMembers ? p.partyMembers.length : 1;
+    var have = 0;
+    for (var k in state.duoMembers) {
+      if (state.duoMembers[k]) { have += 1; }
+    }
+    if (have < need || have < 2) { return; }
+    state.duoFired = true;
+    var damage = p.atk * 3.2;
+    var radius = 220;
+    applyTimeScale(TIMESCALE_BOSS);
+    flashScreen('flash--evolve');
+    shakeScreen(true);
+    Sfx.evolution();
+    showBanner('DUO SKILL', 'パーティ全員の友情コンボが共鳴！', 'friend');
+    showToast('デュオスキル発動！全体攻撃', '★', 'synergy');
+    addShockwave(LAUNCH_X, LAUNCH_Y, radius, '#ffe45c');
+    addRing(LAUNCH_X, LAUNCH_Y, radius * 0.6, '#ffffff', 0.4, 4);
+    for (var i = 0; i < state.enemies.length; i += 1) {
+      var e = state.enemies[i];
+      if (!e.alive) { continue; }
+      addLightning(LAUNCH_X, LAUNCH_Y, e.x, e.y, '#ffe45c');
+      strikeEnemy(e, damage, { color: '#ffe45c', big: true });
+    }
+    state.bullets.length = 0;
+    healPlayer(p.maxHp * 0.1, true);
   }
 
   function updateMissiles(dt) {
@@ -2085,6 +2731,7 @@
       var e = state.enemies[i];
       if (e.spawnAnim > 0) { e.spawnAnim -= dt; }
       if (e.hitFlash > 0) { e.hitFlash -= dt; }
+      if (e.hitCd > 0) { e.hitCd -= dt; }
       if (!e.alive) {
         if (e.deathAnim > 0) { e.deathAnim -= dt; }
         continue;
@@ -2349,28 +2996,35 @@
 
   function drawFriends() {
     var ctx = dom.ctx;
-    var el = ELEMENTS[state.player.element];
     for (var i = 0; i < state.friends.length; i += 1) {
       var f = state.friends[i];
+      var color = f.color || ELEMENTS[state.player.element].color;
+      var down = isFriendOwnerDown(f);
       ctx.save();
       ctx.translate(f.x, f.y);
       var pulse = 1 + Math.sin(state.time * 3.4 + i * 1.7) * 0.07;
-      ctx.globalAlpha = f.used ? 0.28 : 1;
-      ctx.fillStyle = f.used ? '#3b2f5c' : el.color;
+      var dim = f.used || down;
+      ctx.globalAlpha = dim ? 0.28 : 1;
+      ctx.fillStyle = dim ? '#3b2f5c' : color;
       ctx.beginPath();
       ctx.arc(0, 0, f.r * pulse, 0, Math.PI * 2);
       ctx.fill();
-      ctx.globalAlpha = f.used ? 0.4 : 1;
-      ctx.strokeStyle = f.used ? '#57457f' : '#ffffff';
+      ctx.globalAlpha = dim ? 0.4 : 1;
+      ctx.strokeStyle = dim ? '#57457f' : '#ffffff';
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(0, 0, f.r * pulse, 0, Math.PI * 2);
       ctx.stroke();
-      ctx.fillStyle = f.used ? '#7c719e' : '#0b0813';
+      ctx.fillStyle = dim ? '#7c719e' : '#0b0813';
       ctx.font = 'bold 11px "MS Gothic", monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(String.fromCharCode(65 + i), 0, 1);
+      if (state.friendChain > 0 && !f.used) {
+        ctx.fillStyle = '#ffe45c';
+        ctx.font = 'bold 9px "MS Gothic", monospace';
+        ctx.fillText('x' + (state.friendChain + 1), 0, -f.r - 6);
+      }
       ctx.restore();
     }
   }
@@ -2584,40 +3238,138 @@
     }
   }
 
-  function simulateTrajectory(dirX, dirY, power) {
+  /* ---- ゴースト弾道（本物の物理をそのまま予測計算） ---- */
+  function simulateShot(dirX, dirY, power) {
+    var p = state.player;
+    var speed = launchSpeed(power, p.speedMul);
+    var sim = {
+      x: LAUNCH_X, y: LAUNCH_Y,
+      vx: dirX * speed, vy: dirY * speed,
+      omega: 0
+    };
     var points = [];
-    var x = LAUNCH_X;
-    var y = LAUNCH_Y;
-    var speed = launchSpeed(power, state.player.speedMul);
-    var vx = dirX * speed;
-    var vy = dirY * speed;
-    var steps = 46;
-    var dt = 0.62 / steps;
+    var hits = [];
+    var coreHit = null;
+    var combo = 0;
+    var damage = 0;
+    var dt = 1 / 60;
+    var elapsed = 0;
     var bounces = 0;
-    for (var i = 0; i < steps; i += 1) {
-      x += vx * dt;
-      y += vy * dt;
-      if (x - BALL_RADIUS < FIELD.x) { x = FIELD.x + BALL_RADIUS; vx = Math.abs(vx) * WALL_RESTITUTION; bounces += 1; }
-      if (x + BALL_RADIUS > FIELD.x + FIELD.w) { x = FIELD.x + FIELD.w - BALL_RADIUS; vx = -Math.abs(vx) * WALL_RESTITUTION; bounces += 1; }
-      if (y - BALL_RADIUS < FIELD.y) { y = FIELD.y + BALL_RADIUS; vy = Math.abs(vy) * WALL_RESTITUTION; bounces += 1; }
-      if (y + BALL_RADIUS > FIELD.y + FIELD.h) { y = FIELD.y + FIELD.h - BALL_RADIUS; vy = -Math.abs(vy) * WALL_RESTITUTION; bounces += 1; }
-      for (var o = 0; o < state.obstacles.length; o += 1) {
-        var ob = state.obstacles[o];
-        var insideX = x > ob.x - BALL_RADIUS && x < ob.x + ob.w + BALL_RADIUS;
-        var insideY = y > ob.y - BALL_RADIUS && y < ob.y + ob.h + BALL_RADIUS;
-        if (insideX && insideY) {
-          var dxNear = Math.min(Math.abs(x - (ob.x - BALL_RADIUS)), Math.abs(x - (ob.x + ob.w + BALL_RADIUS)));
-          var dyNear = Math.min(Math.abs(y - (ob.y - BALL_RADIUS)), Math.abs(y - (ob.y + ob.h + BALL_RADIUS)));
-          if (dxNear < dyNear) { vx = -vx * OBSTACLE_RESTITUTION; } else { vy = -vy * OBSTACLE_RESTITUTION; }
+    var steps = 0;
+    var gearFlags = {};
+    var enemyFlags = {};
+    while (elapsed < 2.2 && bounces < 8 && steps < 170) {
+      steps += 1;
+      var sp = Math.sqrt(sim.vx * sim.vx + sim.vy * sim.vy);
+      if (sp < 1) { break; }
+      var sub = clamp(Math.ceil((sp * dt) / SUBSTEP_PX), 1, 12);
+      var h = dt / sub;
+      var si;
+      for (si = 0; si < sub; si += 1) {
+        sim.x += sim.vx * h;
+        sim.y += sim.vy * h;
+
+        if (sim.x - BALL_RADIUS < FIELD.x) {
+          sim.x = FIELD.x + BALL_RADIUS;
+          sim.vx = Math.abs(sim.vx) * MATERIALS.wall.restitution;
           bounces += 1;
-          x += vx * dt;
-          y += vy * dt;
+        } else if (sim.x + BALL_RADIUS > FIELD.x + FIELD.w) {
+          sim.x = FIELD.x + FIELD.w - BALL_RADIUS;
+          sim.vx = -Math.abs(sim.vx) * MATERIALS.wall.restitution;
+          bounces += 1;
+        }
+        if (sim.y - BALL_RADIUS < FIELD.y) {
+          sim.y = FIELD.y + BALL_RADIUS;
+          sim.vy = Math.abs(sim.vy) * MATERIALS.wall.restitution;
+          bounces += 1;
+        } else if (sim.y + BALL_RADIUS > FIELD.y + FIELD.h) {
+          sim.y = FIELD.y + FIELD.h - BALL_RADIUS;
+          sim.vy = -Math.abs(sim.vy) * MATERIALS.wall.restitution;
+          bounces += 1;
+        }
+
+        var oi;
+        for (oi = 0; oi < state.obstacles.length; oi += 1) {
+          var ob = state.obstacles[oi];
+          var ccx = clamp(sim.x, ob.x, ob.x + ob.w);
+          var ccy = clamp(sim.y, ob.y, ob.y + ob.h);
+          var ddx = sim.x - ccx;
+          var ddy = sim.y - ccy;
+          var dd2 = ddx * ddx + ddy * ddy;
+          if (dd2 > BALL_RADIUS * BALL_RADIUS) { continue; }
+          var dd = Math.sqrt(dd2);
+          var nnx = dd > 0.001 ? ddx / dd : 0;
+          var nny = dd > 0.001 ? ddy / dd : -1;
+          var vvn = sim.vx * nnx + sim.vy * nny;
+          sim.vx = (sim.vx - 2 * vvn * nnx) * MATERIALS.obstacle.restitution;
+          sim.vy = (sim.vy - 2 * vvn * nny) * MATERIALS.obstacle.restitution;
+          bounces += 1;
+        }
+
+        var gi;
+        for (gi = 0; gi < state.gears.length; gi += 1) {
+          var g = state.gears[gi];
+          var inside = sim.x > g.x - BALL_RADIUS && sim.x < g.x + g.w + BALL_RADIUS &&
+            sim.y > g.y - BALL_RADIUS && sim.y < g.y + g.h + BALL_RADIUS;
+          if (inside && !gearFlags['g' + gi]) {
+            gearFlags['g' + gi] = true;
+            var gsp = Math.sqrt(sim.vx * sim.vx + sim.vy * sim.vy);
+            if (gsp < GEAR_MAX_INPUT_SPEED) {
+              sim.vx *= GEAR_BOOST;
+              sim.vy *= GEAR_BOOST;
+            }
+            gsp = Math.sqrt(sim.vx * sim.vx + sim.vy * sim.vy);
+            if (gsp > 1) {
+              sim.vx = lerp(sim.vx, Math.cos(g.dirRad) * gsp, GEAR_DIR_BLEND);
+              sim.vy = lerp(sim.vy, Math.sin(g.dirRad) * gsp, GEAR_DIR_BLEND);
+            }
+          } else if (!inside) {
+            gearFlags['g' + gi] = false;
+          }
+        }
+
+        var wi;
+        for (wi = 0; wi < state.warps.length; wi += 1) {
+          var w = state.warps[wi];
+          if (dist(sim.x, sim.y, w.x, w.y) > w.r * 0.8) { continue; }
+          var other = state.warps[(wi + 1) % state.warps.length];
+          var wsp = Math.sqrt(sim.vx * sim.vx + sim.vy * sim.vy) || 1;
+          sim.x = other.x + (sim.vx / wsp) * (other.r + BALL_RADIUS + 2);
+          sim.y = other.y + (sim.vy / wsp) * (other.r + BALL_RADIUS + 2);
+          break;
+        }
+
+        var ei;
+        for (ei = 0; ei < state.enemies.length; ei += 1) {
+          var en = state.enemies[ei];
+          if (!en.alive || enemyFlags['e' + ei]) { continue; }
+          var ed = dist(sim.x, sim.y, en.x, en.y);
+          if (ed > BALL_RADIUS + en.radius) { continue; }
+          var core = corePosition(en);
+          var weak = dist(sim.x, sim.y, core.x, core.y) <= CORE_RADIUS + BALL_RADIUS;
+          if (weak && !coreHit) { coreHit = { x: core.x, y: core.y }; }
+          hits.push({ x: sim.x, y: sim.y, weak: weak });
+          enemyFlags['e' + ei] = true;
+          combo += 1;
+          damage += p.atk * (weak ? 3 * (1 + p.weakBonus) : 1);
+          var enx = (sim.x - en.x) / (ed || 1);
+          var eny = (sim.y - en.y) / (ed || 1);
+          var evn = sim.vx * enx + sim.vy * eny;
+          sim.vx = (sim.vx - 2 * evn * enx) * MATERIALS.enemy.restitution;
+          sim.vy = (sim.vy - 2 * evn * eny) * MATERIALS.enemy.restitution;
         }
       }
-      if (i % 3 === 0) { points.push({ x: x, y: y }); }
-      if (bounces > 3) { break; }
+      elapsed += dt;
+      if (steps % 2 === 0) { points.push({ x: sim.x, y: sim.y }); }
+      sp = Math.sqrt(sim.vx * sim.vx + sim.vy * sim.vy);
+      if (sp > 0.0001) {
+        var decel = (LINEAR_DRAG * sp + QUAD_DRAG * sp * sp) * dt;
+        var k = Math.max(0, sp - decel) / sp;
+        sim.vx *= k;
+        sim.vy *= k;
+      }
     }
-    return points;
+    return { points: points, hits: hits, coreHit: coreHit, combo: combo, damage: Math.round(damage) };
   }
 
   function drawAimGuide() {
@@ -2627,7 +3379,8 @@
     var el = ELEMENTS[state.player.element];
 
     if (aim.active && aim.power > 0.02) {
-      var points = simulateTrajectory(aim.dirX, aim.dirY, aim.power);
+      var ghost = aim.ghost || simulateShot(aim.dirX, aim.dirY, aim.power);
+      var points = ghost.points;
       for (var i = 0; i < points.length; i += 1) {
         ctx.globalAlpha = 0.6 - (i / points.length) * 0.45;
         ctx.fillStyle = el.color;
@@ -2637,10 +3390,29 @@
       }
       ctx.globalAlpha = 1;
 
+      for (var h = 0; h < ghost.hits.length; h += 1) {
+        var hx = ghost.hits[h];
+        ctx.strokeStyle = hx.weak ? '#47d9ff' : '#ff8f6a';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(hx.x, hx.y, hx.weak ? 11 : 8, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+      if (ghost.coreHit) {
+        ctx.strokeStyle = '#ff2d55';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(ghost.coreHit.x - 9, ghost.coreHit.y);
+        ctx.lineTo(ghost.coreHit.x + 9, ghost.coreHit.y);
+        ctx.moveTo(ghost.coreHit.x, ghost.coreHit.y - 9);
+        ctx.lineTo(ghost.coreHit.x, ghost.coreHit.y + 9);
+        ctx.stroke();
+      }
+
       var arrowLen = 30 + aim.power * 70;
       var tipX = LAUNCH_X + aim.dirX * arrowLen;
       var tipY = LAUNCH_Y + aim.dirY * arrowLen;
-      ctx.strokeStyle = '#ffffff';
+      ctx.strokeStyle = aim.locked ? '#ffe45c' : '#ffffff';
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.moveTo(LAUNCH_X, LAUNCH_Y);
@@ -2650,7 +3422,7 @@
       ctx.save();
       ctx.translate(tipX, tipY);
       ctx.rotate(Math.atan2(aim.dirY, aim.dirX));
-      ctx.fillStyle = el.color;
+      ctx.fillStyle = aim.locked ? '#ffe45c' : el.color;
       ctx.beginPath();
       ctx.moveTo(0, 0);
       ctx.lineTo(-14, -7);
@@ -2663,7 +3435,7 @@
       ctx.lineWidth = 2;
       ctx.setLineDash([6, 5]);
       ctx.beginPath();
-      ctx.moveTo(LAUNCH_X, LAUNCH_Y);
+      ctx.moveTo(aim.originX, aim.originY);
       ctx.lineTo(aim.pointerX, aim.pointerY);
       ctx.stroke();
       ctx.setLineDash([]);
@@ -2674,11 +3446,27 @@
       var barY = FIELD.y + FIELD.h - barH - 8;
       ctx.fillStyle = 'rgba(0, 0, 0, .55)';
       ctx.fillRect(barX, barY, barW, barH);
-      ctx.fillStyle = aim.power > 0.8 ? '#ff2d55' : (aim.power > 0.5 ? '#f2c75c' : '#47d9ff');
+      ctx.fillStyle = aim.locked ? '#ffe45c' : (aim.power > 0.8 ? '#ff2d55' : (aim.power > 0.5 ? '#f2c75c' : '#47d9ff'));
       ctx.fillRect(barX, barY + barH * (1 - aim.power), barW, barH * aim.power);
-      ctx.strokeStyle = '#57457f';
-      ctx.lineWidth = 1;
+      ctx.strokeStyle = aim.locked ? '#ffe45c' : '#57457f';
+      ctx.lineWidth = aim.locked ? 2 : 1;
       ctx.strokeRect(barX, barY, barW, barH);
+
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 11px "MS Gothic", monospace';
+      ctx.fillStyle = '#ffe45c';
+      ctx.fillText('PW ' + Math.round(aim.power * 100) + '%' + (aim.flick > 0.2 ? ' / FLICK' : ''), barX + barW + 5, barY + 10);
+      if (aim.locked) {
+        ctx.fillStyle = '#ffe45c';
+        ctx.fillText('LOCK', barX + barW + 5, barY + 24);
+      }
+      ctx.fillStyle = ghost.hits.length > 0 ? '#ff8f6a' : 'rgba(236, 231, 251, .6)';
+      ctx.fillText('HIT ' + ghost.hits.length + ' / 与ダメ ' + ghost.damage, barX + barW + 5, barY + 38);
+      if (state.player.shotsLeft <= 1) {
+        ctx.fillStyle = '#47d9ff';
+        ctx.fillText('ASSIST ON', barX + barW + 5, barY + 52);
+      }
     } else if (state.phase === 'idle') {
       ctx.fillStyle = 'rgba(236, 231, 251, .5)';
       ctx.font = '11px "MS Gothic", monospace';
@@ -2838,6 +3626,34 @@
     }
   }
 
+  function renderPartyPips() {
+    var host = dom.hudParty;
+    var p = state.player;
+    if (!host || !p) { return; }
+    var members = p.partyMembers || [];
+    clear(host);
+    for (var i = 0; i < members.length; i += 1) {
+      var m = members[i];
+      var pip = document.createElement('span');
+      pip.className = 'party-pip' + (i === 0 ? ' is-main' : '');
+      pip.setAttribute('data-element', m.element);
+      var down = (p.partyDown || []).indexOf(m.charId) >= 0;
+      if (down) { pip.classList.add('is-down'); }
+      var glyph = document.createElement('b');
+      glyph.className = 'party-pip-glyph';
+      glyph.textContent = m.glyph;
+      pip.appendChild(glyph);
+      var name = document.createElement('span');
+      name.textContent = (i === 0 ? 'MAIN ' : 'SUB ' + i + ' ') + (down ? '×' : m.name);
+      pip.appendChild(name);
+      var role = document.createElement('span');
+      role.className = 'party-pip-role';
+      role.textContent = m.role.label;
+      pip.appendChild(role);
+      host.appendChild(pip);
+    }
+  }
+
   function updateHud() {
     if (!state || !state.player) { return; }
     var p = state.player;
@@ -2877,6 +3693,7 @@
       setText(dom.hudBurstState, 'STANDBY');
     }
     renderSkillChips(false);
+    renderPartyPips();
   }
 
   function showBanner(text, sub, variant) {
@@ -2987,16 +3804,38 @@
     card.setAttribute('data-rarity', item.rarity);
     card.setAttribute('data-uid', item.uid);
     var opts = item.opts.map(function (op) {
-      return { text: op.label, cls: op.curse ? 'is-curse' : '' };
+      var label = op.label;
+      if (!op.curse) {
+        var bonus = itemPlusBonus(item, op);
+        if (bonus > 0) { label += '（＋' + item.plus + ' 補正 +' + bonus + '）'; }
+      }
+      return { text: label, cls: op.curse ? 'is-curse' : '' };
     });
     fillFields(card, {
       slot: SLOT_LABEL[item.slot],
       name: item.name,
       rarity: RARITIES[item.rarity].label,
+      plus: item.plus ? '＋' + item.plus : '',
       opts: opts,
+      note: compareItems(item),
       sell: itemSellValue(item)
     });
     if (equipped) { card.classList.add('is-equipped'); }
+    if (item.locked) { card.classList.add('is-locked'); }
+    var fuseBtn = card.querySelector('[data-action="fuse"]');
+    if (fuseBtn) {
+      var partner = findFusePartner(item);
+      fuseBtn.disabled = (!partner) || !!item.locked;
+      fuseBtn.textContent = partner ? '合成（素材1）' : '素材なし';
+    }
+    var purgeBtn = card.querySelector('[data-action="purge"]');
+    if (purgeBtn) {
+      var cursed = itemHasCurse(item);
+      purgeBtn.disabled = !cursed;
+      purgeBtn.textContent = cursed ? '浄化 ' + PURGE_COST + 'G' : '浄化 ✕';
+    }
+    var lockBtn = card.querySelector('[data-action="lock"]');
+    if (lockBtn) { lockBtn.textContent = item.locked ? 'ロック解除' : 'ロック'; }
     return card;
   }
 
@@ -3130,8 +3969,18 @@
     state.ball.alive = false;
     state.ball.bounce = 0;
     state.ball.trail.length = 0;
-    state.player.shotsLeft = state.player.shotsPerWave;
+    state.player.shotsLeft = state.player.shotsPerWave + clamp(state.carryShots, 0, CARRY_SHOT_MAX);
+    state.carryShots = 0;
     state.player.burstUsed = false;
+    state.partyDowned = [];
+    state.player.partyDown = [];
+    state.supportCounter = 0;
+    state.friendChain = 0;
+    state.friendChainTimer = 0;
+    state.duoMembers = {};
+    state.duoFired = false;
+    state.timeScale = 1;
+    state.timeScaleTimer = 0;
     for (var i = 0; i < state.barrels.length; i += 1) {
       state.barrels[i].hp = state.barrels[i].maxHp;
       state.barrels[i].alive = true;
@@ -3151,14 +4000,26 @@
   function rollDrops(kind) {
     var p = state.player;
     var drops = [];
-    var baseChance = kind === 'stage' ? 0.92 : 0.26;
-    var extra = p.luck * LUCK_DROP_PER_POINT;
-    var chance = clamp(baseChance + extra, 0, 0.99);
-    var rolls = 1 + Math.floor(p.luck / 8) + (kind === 'stage' ? 1 : 0);
-    for (var i = 0; i < rolls; i += 1) {
-      if (Math.random() > chance) { continue; }
+    var isStage = kind === 'stage';
+    var countBase = isStage ? 2 : 1;
+    var countBonus = Math.floor(p.luck / 6) + (isStage ? 1 : 0);
+    var countChance = clamp(0.55 + p.luck * 0.01, 0, 0.98);
+    var rolls = countBase + countBonus;
+    var i;
+    for (i = 0; i < rolls; i += 1) {
+      if (Math.random() > countChance) { continue; }
       var slot = Math.random() < 0.5 ? 'weapon' : 'relic';
       drops.push(createItem(slot, rollRarity(p.luck, state.stageIndex), state.stageIndex));
+    }
+    if (isStage) {
+      var slot2 = Math.random() < 0.5 ? 'weapon' : 'relic';
+      var guaranteed = createItem(slot2, 'epic', state.stageIndex);
+      drops.push(guaranteed);
+    }
+    for (i = 0; i < drops.length; i += 1) {
+      var plusChance = (drops[i].rarity === 'cursed' ? 0.35 : (drops[i].rarity === 'epic' ? 0.28 : 0.1)) +
+        (state.stageIndex - 1) * 0.01;
+      if (Math.random() < plusChance) { drops[i].plus = 1; }
     }
     return drops;
   }
@@ -3176,8 +4037,8 @@
       Sfx.drop(item.rarity);
       showToast(RARITIES[item.rarity].label + '『' + item.name + '』を入手', '◆', item.rarity === 'cursed' ? 'warn' : 'drop');
     }
-    if (save.items.length > 90) {
-      save.items = save.items.slice(save.items.length - 90);
+    if (save.items.length > ITEM_CAP) {
+      trimInventory();
     }
     if (equippedChanged) {
       recomputePlayer(false);
@@ -3217,7 +4078,9 @@
       { label: '残りHP', value: Math.ceil(p.hp) + ' / ' + p.maxHp },
       { label: '最大コンボ', value: 'x' + state.bestCombo },
       { label: 'LUCK', value: p.luck },
-      { label: '追加ドロップ率', value: '+' + pctText(clamp(p.luck * LUCK_DROP_PER_POINT, 0, 0.99)) }
+      { label: '抽選回数（1ウェーブ）', value: (1 + Math.floor(p.luck / 6)) + ' 回' },
+      { label: '抽選成功率', value: pctText(clamp(0.55 + p.luck * 0.01, 0, 0.98)) },
+      { label: '天井カウンタ', value: 'Epic ' + save.pity.epic + ' / Cursed ' + save.pity.cursed }
     ]);
     clear(dom.resultDrops);
     var i;
@@ -3225,9 +4088,9 @@
       var notes = [];
       for (var o = 0; o < drops[i].opts.length; o += 1) { notes.push(drops[i].opts[o].label); }
       var row = makeDropRow({
-        name: drops[i].name,
+        name: drops[i].name + (drops[i].plus ? ' ＋' + drops[i].plus : ''),
         rarity: drops[i].rarity,
-        note: SLOT_LABEL[drops[i].slot] + (notes.length ? ' / ' + notes.join(' ・ ') : '')
+        note: SLOT_LABEL[drops[i].slot] + (notes.length ? ' / ' + notes.join(' ・ ') : '') + ' / ' + compareItems(drops[i])
       });
       if (row) { dom.resultDrops.appendChild(row); }
     }
@@ -3244,7 +4107,8 @@
     }
     var totalDrops = drops.length + (charDrop ? 1 : 0);
     setClass(dom.resultDropsEmpty, 'is-hidden', totalDrops > 0);
-    setText(dom.resultLuckNote, 'LUCK ' + p.luck + ' ／ 追加ドロップ率 +' + pctText(clamp(p.luck * LUCK_DROP_PER_POINT, 0, 0.99)));
+    setText(dom.resultLuckNote, 'LUCK ' + p.luck + ' ／ 抽選 ' + (1 + Math.floor(p.luck / 6)) +
+      ' 回 / 成功率 ' + pctText(clamp(0.55 + p.luck * 0.01, 0, 0.98)) + ' / 天井 E' + save.pity.epic + ' C' + save.pity.cursed);
     if (charDrop && charDrop.added) { Sfx.fanfare(); }
     persistSave();
     updateHud();
@@ -3254,6 +4118,7 @@
     if (state.phase === 'result' || state.phase === 'gameover') { return; }
     state.phase = 'result';
     Sfx.waveClear();
+    state.carryShots = clamp(state.player.shotsLeft, 0, CARRY_SHOT_MAX);
     var isStageClear = state.waveIndex >= WAVES_PER_STAGE;
     var drops = rollDrops(isStageClear ? 'stage' : 'wave');
     grantDrops(drops);
@@ -3499,6 +4364,19 @@
     setText(dom.invGold, fmtNum(save.gold));
     setText(dom.invLuck, totalLuck());
     setText(dom.invBest, stageIndexToKey(save.bestStageIndex));
+    if (dom.invPity) {
+      var pity = save.pity || { epic: 0, cursed: 0 };
+      setText(dom.invPity, 'E' + pity.epic + ' C' + pity.cursed);
+    }
+    if (dom.autoSellNote) {
+      var normalCount = 0;
+      for (var i = 0; i < save.items.length; i += 1) {
+        var it = save.items[i];
+        var equipped = (save.equip[it.slot] === it.uid);
+        if ((it.rarity === 'normal' || it.rarity === 'rare') && !equipped && !it.locked) { normalCount += 1; }
+      }
+      setText(dom.autoSellNote, '売却対象 ' + normalCount + '個（装備中・ロック中は保護）');
+    }
     renderEquipSlots();
     renderEquipStats();
     renderInventoryItems();
@@ -3558,6 +4436,10 @@
       rows.push({ label: 'ショット数 / ウェーブ', value: p.shotsPerWave });
       var names = activeSynergyNames();
       rows.push({ label: '発動中のシナジー', value: names.length ? names.join(' / ') : 'なし', cls: names.length ? 'is-buff' : '' });
+      rows.push({ label: 'パーティ', value: partyAuraSummary(), cls: p.partyMembers.length > 1 ? 'is-buff' : '' });
+      rows.push({ label: 'オーラ: 与ダメージ', value: 'x' + p.auraDmg.toFixed(2), cls: p.auraDmg > 1 ? 'is-buff' : '' });
+      rows.push({ label: 'オーラ: クリ率加算', value: '+' + pctText(p.auraCrit), cls: p.auraCrit > 0 ? 'is-buff' : '' });
+      rows.push({ label: '被ダメージ倍率（合計）', value: 'x' + p.dmgTakenMult.toFixed(2), cls: p.dmgTakenMult > 1 ? 'is-debuff' : 'is-buff' });
     }
     fillStatList(dom.equipStats, rows);
   }
@@ -3603,12 +4485,23 @@
       if (state && state.player) { recomputePlayer(false); updateHud(); }
       renderInventory();
     } else if (action === 'sell') {
+      if (item.locked) {
+        showToast('ロック中の装備は売却できません', '✕', 'warn');
+        return;
+      }
       var value = itemSellValue(item);
       var name = item.name;
       sellItem(uid);
       Sfx.coin();
       showToast('『' + name + '』を売却 → +' + value + 'G', '＋', 'gold');
       if (state && state.player) { recomputePlayer(false); updateHud(); }
+      renderInventory();
+    } else if (action === 'fuse') {
+      if (fuseItems(uid)) { renderInventory(); }
+    } else if (action === 'purge') {
+      if (purgeItem(uid)) { renderInventory(); }
+    } else if (action === 'lock') {
+      toggleItemLock(uid);
       renderInventory();
     }
   }
@@ -3639,9 +4532,66 @@
       ? save.selectedCharId
       : (ownedCharIds()[0] || 'fire');
     renderCharSelect();
+    renderPartyBar();
     renderCharDetail(selectedCharId, !!save.chars[selectedCharId]);
     if (dom.charConfirm) { dom.charConfirm.disabled = !save.chars[selectedCharId]; }
     openModal('charselect');
+  }
+
+  function renderPartyBar() {
+    var slots = [
+      { id: 'party-slot-main', key: 'main', label: 'MAIN' },
+      { id: 'party-slot-sub0', key: 'sub0', label: 'SUB1' },
+      { id: 'party-slot-sub1', key: 'sub1', label: 'SUB2' }
+    ];
+    var mainId = (save.party && save.party.main) || save.selectedCharId;
+    if (!save.chars[mainId]) { mainId = ownedCharIds()[0] || 'fire'; }
+    for (var i = 0; i < slots.length; i += 1) {
+      var el = $(slots[i].id);
+      if (!el) { continue; }
+      var charId = null;
+      if (slots[i].key === 'main') {
+        charId = mainId;
+      } else if (save.party && save.party.subs) {
+        charId = save.party.subs[i - 1] || null;
+      }
+      if (charId && save.chars[charId]) {
+        var ev = getEvolution(charId, save.chars[charId].star);
+        setText(el, slots[i].label + ': ' + ev.name + ' ' + stars(save.chars[charId].star));
+      } else {
+        setText(el, slots[i].label + ': 空き');
+      }
+      setClass(el, 'is-main', slots[i].key === 'main');
+    }
+  }
+
+  function assignPartySub(charId) {
+    if (!save.chars[charId]) {
+      showToast('未所持のキャラクターです', '✕', 'warn');
+      return;
+    }
+    if (!save.party) { save.party = { main: save.selectedCharId, subs: [] }; }
+    if (save.party.main === charId) {
+      showToast('メインキャラはサブに編成できません', '✕', 'warn');
+      return;
+    }
+    var subs = save.party.subs || [];
+    if (subs.indexOf(charId) >= 0) {
+      subs.splice(subs.indexOf(charId), 1);
+      showToast('サブ編成から外しました', '◇', '');
+    } else {
+      if (subs.length >= PARTY_SIZE - 1) { subs.shift(); }
+      subs.push(charId);
+      showToast('サブに編成: ' + getEvolution(charId, save.chars[charId].star).name, '★', 'drop');
+    }
+    save.party.subs = subs;
+    persistSave();
+    renderPartyBar();
+    renderCharSelect();
+    if (state && state.player) {
+      recomputePlayer(false);
+      updateHud();
+    }
   }
 
   function renderCharSelect() {
@@ -3790,6 +4740,7 @@
     dom.hudBossFill = $('hud-boss-fill');
     dom.hudBurst = $('hud-burst');
     dom.hudBurstState = $('hud-burst-state');
+    dom.hudParty = $('hud-party');
     dom.hudSkills = $('hud-skills');
     dom.bannerLayer = $('banner-layer');
     dom.flashLayer = $('flash-layer');
@@ -3834,6 +4785,12 @@
     dom.invCharList = $('inv-char-list');
     dom.equipStats = $('equip-stats');
 
+    dom.partySubBtn = $('btn-party-sub');
+    dom.partyBar = $('party-bar');
+    dom.invPity = $('inv-pity');
+    dom.autoSellBtn = $('btn-auto-sell');
+    dom.autoSellNote = $('inv-auto-sell-note');
+
     dom.resultTitle = $('result-title');
     dom.resultSubtitle = $('result-subtitle');
     dom.resultStats = $('result-stats');
@@ -3872,24 +4829,137 @@
     return state.phase === 'idle' || state.phase === 'aiming' || state.phase === 'moving';
   }
 
+  function countPointers() {
+    var n = 0;
+    for (var k in state.pointers) {
+      if (state.pointers[k]) { n += 1; }
+    }
+    return n;
+  }
+
   function updateAimFromPoint(px, py) {
     var aim = state.aim;
+    var now = state.time;
     aim.pointerX = px;
     aim.pointerY = py;
-    var dx = LAUNCH_X - px;
-    var dy = LAUNCH_Y - py;
+    var dx = aim.originX - px;
+    var dy = aim.originY - py;
     var len = Math.sqrt(dx * dx + dy * dy);
     if (len < 0.001) {
       aim.power = 0;
+      aim.lastMove = now;
       return;
     }
     aim.dirX = dx / len;
     aim.dirY = dy / len;
-    aim.power = clamp(len / MAX_PULL, 0, 1);
+    var pullPower = clamp(len / MAX_PULL, 0, 1);
+    aim.samples.push({ x: px, y: py, t: now });
+    while (aim.samples.length > 2 && now - aim.samples[0].t > FLICK_WINDOW) {
+      aim.samples.shift();
+    }
+    var flickSpeed = 0;
+    if (aim.samples.length >= 2) {
+      var first = aim.samples[0];
+      var last = aim.samples[aim.samples.length - 1];
+      var span = Math.max(0.001, last.t - first.t);
+      flickSpeed = dist(first.x, first.y, last.x, last.y) / span;
+    }
+    aim.flick = clamp(flickSpeed / FLICK_SPEED_MAX, 0, 1);
+    if (!aim.locked) {
+      aim.power = clamp(pullPower + aim.flick * FLICK_WEIGHT, 0, 1);
+      aim.lockedPower = aim.power;
+    }
+    aim.lastMove = now;
+  }
+
+  function adjustAimPower(delta) {
+    var aim = state.aim;
+    if (!aim.locked) { return; }
+    aim.lockedPower = clamp(aim.lockedPower + delta, 0.05, 1);
+    Sfx.ui();
+  }
+
+  function applyAimAssist(dirX, dirY) {
+    var p = state.player;
+    if (!p || p.shotsLeft > 1) { return { x: dirX, y: dirY, used: false }; }
+    var best = null;
+    var bestAngle = AIM_ASSIST_ANGLE;
+    for (var i = 0; i < state.enemies.length; i += 1) {
+      var e = state.enemies[i];
+      if (!e.alive) { continue; }
+      var core = corePosition(e);
+      var cx = core.x - LAUNCH_X;
+      var cy = core.y - LAUNCH_Y;
+      var cl = Math.sqrt(cx * cx + cy * cy);
+      if (cl < 1) { continue; }
+      var nx = cx / cl;
+      var ny = cy / cl;
+      var angle = Math.acos(clamp(dirX * nx + dirY * ny, -1, 1));
+      if (angle < bestAngle) {
+        bestAngle = angle;
+        best = { x: nx, y: ny };
+      }
+    }
+    if (best) { return { x: best.x, y: best.y, used: true }; }
+    return { x: dirX, y: dirY, used: false };
+  }
+
+  function cancelAim(notify) {
+    var aim = state.aim;
+    if (!aim.active) { return; }
+    aim.active = false;
+    aim.locked = false;
+    aim.power = 0;
+    aim.samples = [];
+    state.pointerId = null;
+    if (state.phase === 'aiming') { state.phase = 'idle'; }
+    if (dom.canvas) { dom.canvas.classList.remove('is-aiming'); }
+    if (notify) { showToast('照準をキャンセルしました', '✕', 'warn'); }
+  }
+
+  function updateAimLock(dt) {
+    var aim = state.aim;
+    if (!aim.active || aim.locked) { return; }
+    if (state.time - aim.lastMove < POWER_LOCK_TIME) { return; }
+    if (aim.power < 0.12) { return; }
+    aim.locked = true;
+    aim.lockedPower = aim.power;
+    Sfx.ui();
+    showToast('パワーロック中（←→で微調整 / Rで射出 / Escでキャンセル）', '◈', 'gold');
+  }
+
+  function finishAim() {
+    var aim = state.aim;
+    if (!aim.active) { return; }
+    var power = aim.locked ? aim.lockedPower : aim.power;
+    var dirX = aim.dirX;
+    var dirY = aim.dirY;
+    var pullLength = dist(aim.originX, aim.originY, aim.pointerX, aim.pointerY);
+    aim.active = false;
+    aim.locked = false;
+    state.pointerId = null;
+    if (dom.canvas) { dom.canvas.classList.remove('is-aiming'); }
+    if (pullLength < MIN_PULL && power * MAX_PULL < MIN_PULL) {
+      state.phase = 'idle';
+      return;
+    }
+    var assisted = applyAimAssist(dirX, dirY);
+    if (assisted.used) {
+      aim.assist = true;
+      showToast('エイムアシスト発動（弱点コアへ吸着）', '◎', 'synergy');
+    }
+    launchBall(assisted.x, assisted.y, power);
   }
 
   function onPointerDown(ev) {
     Sound.unlock();
+    if (!state) { return; }
+    var key = 'p' + (ev.pointerId === undefined ? 0 : ev.pointerId);
+    state.pointers[key] = true;
+    if (countPointers() > 1) {
+      if (state.aim.active) { cancelAim(true); }
+      return;
+    }
     if (!canAcceptGameplayInput()) { return; }
     if (state.phase === 'moving') {
       ev.preventDefault();
@@ -3898,11 +4968,22 @@
     }
     if (state.phase !== 'idle') { return; }
     var pt = canvasPoint(ev.clientX, ev.clientY);
-    state.aim.active = true;
-    state.aim.power = 0;
-    state.aim.dirX = 0;
-    state.aim.dirY = -1;
-    updateAimFromPoint(pt.x, pt.y);
+    var aim = state.aim;
+    aim.active = true;
+    aim.originX = pt.x;
+    aim.originY = pt.y;
+    aim.pointerX = pt.x;
+    aim.pointerY = pt.y;
+    aim.power = 0;
+    aim.locked = false;
+    aim.lockedPower = 0;
+    aim.flick = 0;
+    aim.assist = false;
+    aim.samples = [];
+    aim.ghost = null;
+    aim.lastMove = state.time;
+    aim.dirX = 0;
+    aim.dirY = -1;
     state.phase = 'aiming';
     state.pointerId = ev.pointerId;
     if (dom.canvas.setPointerCapture) {
@@ -3913,7 +4994,7 @@
   }
 
   function onPointerMove(ev) {
-    if (!state || !state.aim.active) { return; }
+    if (!state || !state.aim.active || anyModalOpen()) { return; }
     if (state.pointerId !== null && state.pointerId !== undefined && ev.pointerId !== state.pointerId) { return; }
     var pt = canvasPoint(ev.clientX, ev.clientY);
     updateAimFromPoint(pt.x, pt.y);
@@ -3921,25 +5002,18 @@
   }
 
   function onPointerUp(ev) {
-    if (!state || !state.aim.active) { return; }
+    if (!state) { return; }
+    var key = 'p' + (ev.pointerId === undefined ? 0 : ev.pointerId);
+    delete state.pointers[key];
+    if (!state.aim.active) { return; }
+    if (state.pointerId !== null && state.pointerId !== undefined && ev.pointerId !== state.pointerId) { return; }
     var pt = canvasPoint(ev.clientX, ev.clientY);
     updateAimFromPoint(pt.x, pt.y);
-    var pullLength = dist(LAUNCH_X, LAUNCH_Y, pt.x, pt.y);
-    var dirX = state.aim.dirX;
-    var dirY = state.aim.dirY;
-    var power = state.aim.power;
-    state.aim.active = false;
-    state.pointerId = null;
-    dom.canvas.classList.remove('is-aiming');
     if (dom.canvas.releasePointerCapture) {
       try { dom.canvas.releasePointerCapture(ev.pointerId); } catch (err) { /* 未キャプチャ時は無視 */ }
     }
     ev.preventDefault();
-    if (pullLength < MIN_PULL) {
-      state.phase = 'idle';
-      return;
-    }
-    launchBall(dirX, dirY, power);
+    finishAim();
   }
 
   function isOpen(name) {
@@ -3958,8 +5032,14 @@
   /* ---- キーボード ---- */
   function onKeyDown(ev) {
     var key = ev.key ? ev.key.toLowerCase() : '';
+    if (state && state.aim.active && state.aim.locked) {
+      if (key === 'arrowleft' || key === 'arrowdown') { ev.preventDefault(); adjustAimPower(-POWER_STEP); return; }
+      if (key === 'arrowright' || key === 'arrowup') { ev.preventDefault(); adjustAimPower(POWER_STEP); return; }
+      if (key === 'r') { ev.preventDefault(); finishAim(); return; }
+    }
     if (key === 'escape') {
       ev.preventDefault();
+      if (state && state.aim.active) { cancelAim(true); return; }
       if (isOpen('help')) { closeHelp(); return; }
       if (isOpen('inventory')) { closeInventory(); return; }
       if (isOpen('evolution')) { closeModal('evolution'); openModal('charselect'); return; }
@@ -4219,10 +5299,22 @@
 
     on('btn-char-confirm', function () {
       if (!save.chars[selectedCharId]) { return; }
+      if (!save.party) { save.party = { main: selectedCharId, subs: [] }; }
+      save.party.main = selectedCharId;
+      save.party.subs = (save.party.subs || []).filter(function (id) { return id !== selectedCharId; });
+      persistSave();
       startRun(selectedCharId);
     });
     on('btn-char-back', function () { showTitle(); });
     on('btn-evolve', evolveChar);
+    on('btn-party-sub', function () {
+      if (!selectedCharId) { return; }
+      assignPartySub(selectedCharId);
+    });
+    on('btn-auto-sell', function () {
+      if (autoSellItems() > 0) { renderInventory(); }
+      else { renderInventory(); }
+    });
     on('btn-evolution-ok', function () {
       closeModal('evolution');
       openModal('charselect');
@@ -4284,11 +5376,23 @@
       return;
     }
     state.time += dt;
+    if (state.timeScaleTimer > 0) {
+      state.timeScaleTimer -= dt;
+      if (state.timeScaleTimer <= 0) { state.timeScale = 1; }
+    }
     if (state.comboTimer > 0) {
       state.comboTimer -= dt;
       if (state.comboTimer <= 0) { resetCombo(); }
     }
     if (state.warpCooldown > 0) { state.warpCooldown -= dt; }
+    if (state.friendChainTimer > 0) {
+      state.friendChainTimer -= dt;
+      if (state.friendChainTimer <= 0) {
+        state.friendChain = 0;
+        state.duoMembers = {};
+        state.duoFired = false;
+      }
+    }
 
     var i;
     for (i = 0; i < state.obstacles.length; i += 1) {
@@ -4308,19 +5412,29 @@
       if (state.friends[i].pulse > 0) { state.friends[i].pulse -= dt * 2; }
     }
 
-    updateEnemies(dt);
-    updateBullets(dt);
-    updateMissiles(dt);
-    if (state.phase === 'moving') { updateBall(dt); }
+    var sdt = dt * state.timeScale;
+    if (state.phase === 'aiming' && state.aim.active) {
+      updateAimLock(dt);
+      var aimTick = Math.floor(state.time * 30);
+      if (state.aim.ghostTick !== aimTick) {
+        state.aim.ghostTick = aimTick;
+        state.aim.ghost = simulateShot(state.aim.dirX, state.aim.dirY,
+          state.aim.locked ? state.aim.lockedPower : state.aim.power);
+      }
+    }
+    updateEnemies(sdt);
+    updateBullets(sdt);
+    updateMissiles(sdt);
+    if (state.phase === 'moving') { updateBall(sdt); }
     if (state.phase === 'enemyturn') {
-      state.enemyTurnTimer -= dt;
+      state.enemyTurnTimer -= sdt;
       if (state.enemyTurnTimer <= 0 && (state.bullets.length === 0 || state.enemyTurnTimer <= -1.4)) {
         finishEnemyTurn();
       }
     }
-    updateParticles(dt);
-    updateTexts(dt);
-    updateEffects(dt);
+    updateParticles(sdt);
+    updateTexts(sdt);
+    updateEffects(sdt);
   }
 
   function frame(timestamp) {

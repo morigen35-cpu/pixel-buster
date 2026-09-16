@@ -2308,6 +2308,150 @@ canvas {
   --rarity-glow: rgba(255, 45, 85, .55);
 }
 
+/* ==========================================================================
+   11-B. パーティ & アイテム操作（Battle Core 2.0 追加UI）
+   ========================================================================== */
+.hud-party {
+  position: absolute;
+  left: 10px;
+  bottom: 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  align-items: flex-start;
+}
+
+.party-pip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  font-size: 9px;
+  color: var(--c-text-dim);
+  background: linear-gradient(180deg, rgba(26, 20, 48, .9), rgba(11, 8, 19, .94));
+  border: 1px solid var(--c-edge-2);
+  box-shadow: 0 0 0 1px #000;
+}
+
+.party-pip-glyph {
+  font-size: 11px;
+  line-height: 1;
+  color: var(--c-gold);
+  text-shadow: var(--glow-gold);
+}
+
+.party-pip.is-main {
+  border-color: var(--c-gold);
+}
+
+.party-pip.is-active {
+  border-color: var(--c-aqua);
+  box-shadow: 0 0 0 1px #000, 0 0 10px rgba(71, 217, 255, .45);
+}
+
+.party-pip.is-down {
+  opacity: .45;
+  filter: grayscale(.8);
+}
+
+.party-pip[data-element="fire"] .party-pip-glyph { color: var(--c-elem-fire); text-shadow: var(--glow-ember); }
+.party-pip[data-element="wind"] .party-pip-glyph { color: var(--c-elem-wind); text-shadow: var(--glow-leaf); }
+.party-pip[data-element="water"] .party-pip-glyph { color: var(--c-elem-water); text-shadow: var(--glow-aqua); }
+.party-pip[data-element="dark"] .party-pip-glyph { color: var(--c-elem-dark); text-shadow: var(--glow-violet); }
+
+.party-pip-role {
+  font-family: var(--font-num);
+  font-size: 8px;
+  letter-spacing: .06em;
+  color: var(--c-muted);
+}
+
+.party-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 7px;
+  background: linear-gradient(180deg, rgba(11, 8, 19, .92), rgba(5, 4, 10, .96));
+  border: 2px solid var(--c-edge-2);
+  box-shadow: var(--bevel-in);
+}
+
+.party-bar-label {
+  font-size: 9px;
+  letter-spacing: .18em;
+  color: var(--c-violet);
+  text-shadow: var(--glow-violet);
+}
+
+.party-slot {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 3px 6px;
+  font-size: 9px;
+  color: var(--c-text-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgba(36, 27, 61, .6);
+  border: 1px solid var(--c-edge);
+}
+
+.party-slot.is-main {
+  color: var(--c-gold);
+  border-color: var(--c-gold-dim);
+  text-shadow: var(--glow-gold);
+}
+
+.evolve-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.panel-actions-note {
+  font-size: 9px;
+  color: var(--c-muted);
+}
+
+.item-card-plus {
+  padding: 0 5px;
+  font-family: var(--font-num);
+  font-size: 9px;
+  font-weight: 700;
+  color: #14061e;
+  background: linear-gradient(180deg, #dcb9ff, var(--c-violet));
+  border: 1px solid rgba(0, 0, 0, .6);
+}
+
+.item-card-note {
+  font-size: 9px;
+  line-height: 1.5;
+  color: var(--c-aqua);
+}
+
+.item-card-note:empty {
+  display: none;
+}
+
+.item-card.is-locked {
+  border-color: var(--c-edge-2);
+  box-shadow: 0 0 0 2px #000, var(--bevel-out), 0 0 10px rgba(124, 113, 158, .5);
+}
+
+.item-card.is-locked .item-card-actions [data-action="sell"],
+.item-card.is-locked .item-card-actions [data-action="fuse"] {
+  opacity: .4;
+  pointer-events: none;
+}
+
 /* ---- 所持アイテム ---- */
 .item-list {
   display: flex;
